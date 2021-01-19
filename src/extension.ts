@@ -12,6 +12,7 @@ import * as zephyr from './zephyr';
 import { PropFile } from './propfile';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as lsp from './lspClient';
 
 class KconfigLangHandler
 	implements
@@ -622,27 +623,30 @@ class KconfigLangHandler
 var langHandler: KconfigLangHandler;
 
 export function activate(context: vscode.ExtensionContext) {
-	if (kEnv.getConfig('disable')) {
-		return;
-	}
+	lsp.client.start();
 
-	zephyr.activate(context).then(foundZephyr => {
-		if (!foundZephyr) {
-			return;
-		}
+	// if (kEnv.getConfig('disable')) {
+	// 	return;
+	// }
 
-		kEnv.update();
+	// zephyr.activate(context).then(foundZephyr => {
+	// 	if (!foundZephyr) {
+	// 		return;
+	// 	}
 
-		if (!kEnv.isActive()) {
-			return;
-		}
+	// 	kEnv.update();
 
-		langHandler = new KconfigLangHandler();
+	// 	if (!kEnv.isActive()) {
+	// 		return;
+	// 	}
 
-		langHandler.activate(context);
-	});
+	// 	langHandler = new KconfigLangHandler();
+
+	// 	langHandler.activate(context);
+	// });
 }
 
 export function deactivate() {
 	langHandler?.deactivate();
+	lsp.client.stop();
 }
