@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import Api from './api';
 import { Context } from './context';
+import * as lsp from './lspClient';
 
 function isConfFile(doc?: vscode.TextDocument): boolean {
 	// Files like .gitconfig is also a properties file. Check extensions in addition:
@@ -606,32 +607,10 @@ export function startExtension(): boolean {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-	const api = new Api();
-
-	kEnv.setExtensionContext(context);
-	if (kEnv.getConfig('disable')) {
-		return;
-	}
-
-	// If the nrf-connect extension exists, we'll wait for that to start the extension for us:
-    if (!vscode.extensions.getExtension("nordic-semiconductor.nrf-connect")) {
-		zephyr.resolveEnvironment(kEnv.extensionContext).then((foundZephyr) => {
-			if (!foundZephyr) {
-				return;
-			}
-
-			startExtension();
-			zephyr.createBoardStatusbarItem();
-
-			if (isConfFile(vscode.window.activeTextEditor?.document)) {
-				langHandler!.onOpenConfFile(vscode.window.activeTextEditor!.document.uri);
-			}
-		});
-	}
-
-	return api;
+	lsp.client.start();
 }
 
 export function deactivate() {
 	langHandler?.deactivate();
+	lsp.client.stop();
 }
