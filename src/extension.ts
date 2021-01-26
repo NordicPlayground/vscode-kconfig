@@ -587,30 +587,11 @@ export class KconfigLangHandler
 export var langHandler: KconfigLangHandler | undefined;
 var active = false;
 
-export function startExtension(): boolean {
-	if (active) {
-		return true;
-	}
-
-	kEnv.update();
-
-	if (!kEnv.isActive()) {
-		return false;
-	}
-
-	zephyr.activate(kEnv.extensionContext);
-
-	langHandler = new KconfigLangHandler();
-	langHandler.activate(kEnv.extensionContext);
-	active = true;
-	return true;
-}
-
 export function activate(context: vscode.ExtensionContext) {
 	lsp.client.start();
 }
 
 export function deactivate() {
 	langHandler?.deactivate();
-	lsp.client.stop();
+	// lsp.client.stop();
 }
