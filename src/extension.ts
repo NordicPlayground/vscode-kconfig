@@ -623,7 +623,7 @@ class KconfigLangHandler
 var langHandler: KconfigLangHandler;
 
 export function activate(context: vscode.ExtensionContext) {
-	lsp.client.start();
+	lsp.activate(context);
 
 	// if (kEnv.getConfig('disable')) {
 	// 	return;
@@ -648,5 +648,5 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
 	langHandler?.deactivate();
-	lsp.client.stop();
+	// lsp.client.stop();
 }
