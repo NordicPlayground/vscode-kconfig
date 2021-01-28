@@ -22,6 +22,22 @@
                 "kind": "test",
                 "isDefault": true
             }
+        },
+        {
+            "type": "npm",
+            "script": "webpack",
+            "problemMatcher": [],
+            "label": "npm: webpack",
+            "detail": "webpack --mode development",
+            "presentation": {
+                "reveal": "never",
+            }
+        },
+        // Sleep task for delaying the python debugger attach:
+        {
+            "type": "shell",
+            "command": "sleep 4",
+            "label": "sleep"
         }
     ]
 }
