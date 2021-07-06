@@ -12,6 +12,7 @@ import * as zephyr from './zephyr';
 import { PropFile } from './propfile';
 import * as fs from 'fs';
 import * as path from 'path';
+import Api from './api';
 
 class KconfigLangHandler
 	implements
@@ -641,6 +642,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 		langHandler.activate(context);
 	});
+
+	vscode.window.showInformationMessage("Hello fromafsdsdf Kconfig!");
+
+	return new Api()
 }
 
 export function deactivate() {
