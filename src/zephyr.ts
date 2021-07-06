@@ -123,15 +123,37 @@ export function selectBoard() {
 			}
 
 			board = await setBoard(selection!.label, selection!.description!);
-			vscode.workspace
-				.getConfiguration("kconfig")
-				.update("zephyr.board", board, vscode.ConfigurationTarget.Workspace)
-				.then(
-					() => console.log(`Stored new board ${board.board}`),
-					err => console.error(`Failed storing board ${err}`)
-				);
+			updateBoardConfig(board);
 		});
 	});
+}
+
+export function updateBoardFromName(boardName: string): void {
+	west(['boards', '-f', '"{name}:{arch}"'], async (error, stdout) => {
+		if (error) {
+			return;
+		}
+
+		const boardWithArch = stdout
+			.split(/\r?\n/g)
+			.find(b => b.startsWith(boardName));
+
+		if (boardWithArch) {
+			const arch = boardWithArch.split(":")[1];
+			const boardTuple = await setBoard(boardName, arch);
+			updateBoardConfig(boardTuple);
+		}
+	});
+}
+
+function updateBoardConfig(board: BoardTuple) {
+	vscode.workspace
+	.getConfiguration("kconfig")
+	.update("zephyr.board", board, vscode.ConfigurationTarget.Workspace)
+	.then(
+		() => console.log(`Stored new board ${board.board}`),
+		err => console.error(`Failed storing board ${err}`)
+	);
 }
 
 export function getModules() {
@@ -232,6 +254,11 @@ function getZephyrBase(): string | undefined {
 	return process.env['ZEPHYR_BASE'] as string;
 }
 
+export async function setZephyrBase(uri: vscode.Uri): Promise<void> {
+	zephyrRoot = uri.fsPath;
+	kEnv.setConfig("kconfig.zephyr.base", zephyrRoot);
+}
+
 function openConfig(entry: string) {
 	vscode.commands.executeCommand('workbench.action.openSettings', entry);
 }
@@ -307,6 +334,11 @@ async function checkIsZephyr(): Promise<boolean> {
 	}
 
 	return !!(board?.board && board.arch && board.dir);
+}
+
+export function setWest(westUri: vscode.Uri): void {
+	westExe = westUri.fsPath;
+	kEnv.setConfig("zephyr.west", westExe);
 }
 
 function findWest() {

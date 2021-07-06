@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as zephyr from './zephyr';
 
 interface Context {
     /** Context ID number. Can be used to manipulate the context later. */
@@ -16,13 +17,17 @@ class Api {
 
     async addContext(buildConfig: vscode.Uri, name?: string): Promise<void> {}
 
-    async setZephyrBase(uri: vscode.Uri) {
-        
+    async setZephyrBase(uri: vscode.Uri): Promise<void> {
+        return zephyr.setZephyrBase(uri);
     }
 
-    async setZephryBoard() {}
+    async setZephryBoard(board: string): Promise<void> {
+        return zephyr.updateBoardFromName(board);
+    }
 
-    async setWest(uri: vscode.Uri) {}
+    async setWest(uri: vscode.Uri) {
+        return zephyr.setWest(uri)
+    }
 
     async removeContext(id: number) {}
 
