@@ -90,7 +90,6 @@ export function getConfig(name: string) {
 type BoardTuple = {board: string, arch: string, dir: string};
 
 var board: BoardTuple;
-var boardStatus: vscode.StatusBarItem;
 
 function setBoard(board: string, arch: string): Promise<BoardTuple> {
 	return new Promise<BoardTuple>((resolve, reject) => {
@@ -124,7 +123,6 @@ export function selectBoard() {
 			}
 
 			board = await setBoard(selection!.label, selection!.description!);
-			boardStatus.text = `$(circuit-board) ${board.board}`;
 			vscode.workspace
 				.getConfiguration("kconfig")
 				.update("zephyr.board", board, vscode.ConfigurationTarget.Workspace)
@@ -187,22 +185,6 @@ class DocumentProvider implements vscode.TextDocumentContentProvider {
 }
 
 function activateZephyr(context: vscode.ExtensionContext) {
-	boardStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 2);
-	boardStatus.text = `$(circuit-board) ${board.board}`;
-	boardStatus.command = 'kconfig.zephyr.setBoard';
-	boardStatus.tooltip = 'Kconfig board';
-
-	let toggleBoardStatus = (e?: vscode.TextEditor) => {
-		if (e?.document?.languageId === 'properties') {
-			boardStatus.show();
-		} else {
-			boardStatus.hide();
-		}
-	};
-
-	toggleBoardStatus(vscode.window.activeTextEditor);
-	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(toggleBoardStatus));
-
 	if (process.env['ZEPHYR_SDK_INSTALL_DIR']) {
 		var toolchain_dir = `${zephyrRoot}/cmake/toolchain/zephyr`;
 		var toolchains = glob.sync('*.*/generic.cmake', {cwd: toolchain_dir}).map(g => g.replace(/\/.*/, ''));
