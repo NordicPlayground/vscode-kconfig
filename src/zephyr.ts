@@ -131,6 +131,7 @@ export function selectBoard() {
 export function updateBoardFromName(boardName: string): void {
 	west(['boards', '-f', '"{name}:{arch}"'], async (error, stdout) => {
 		if (error) {
+			vscode.window.showErrorMessage("Couldn't call West; make sure it is configured correctly.");
 			return;
 		}
 

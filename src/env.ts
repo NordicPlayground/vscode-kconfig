@@ -40,6 +40,16 @@ export function getRoot() {
 	return path.dirname(getRootFile().fsPath);
 }
 
+export function findRootFromApp(appUri: vscode.Uri) {
+	const appKConfig = path.join(appUri.fsPath, 'KConfig');
+
+	if (fs.existsSync(appKConfig)) {
+		return appKConfig;
+	} else {
+		return path.join(getConfig('zephyr.base'), 'KConfig');
+	}
+}
+
 export function isActive(): boolean {
 	if (getConfig('disable')) {
 		return false;

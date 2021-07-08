@@ -14,7 +14,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import Api from './api';
 
-class KconfigLangHandler
+export class KconfigLangHandler
 	implements
 		vscode.DefinitionProvider,
 		vscode.HoverProvider,
@@ -154,8 +154,6 @@ class KconfigLangHandler
 					file = this.propFile(e.document.uri);
 					file.reparse(e.document);
 				}
-
-				this.suggestKconfigRoot(file);
 			} else if (e?.document) {
 				this.setKconfigLang(e.document);
 			}
@@ -182,8 +180,6 @@ class KconfigLangHandler
 					file = this.propFile(d.uri);
 					file.onOpen(d);
 				}
-
-				this.suggestKconfigRoot(file);
 			} else {
 				this.setKconfigLang(d);
 			}
@@ -194,6 +190,7 @@ class KconfigLangHandler
 			if (e.affectsConfiguration('kconfig')) {
 				kEnv.update();
 				if (e.affectsConfiguration('kconfig.root')) {
+					vscode.window.showInformationMessage("getting the root file")
 					this.repo.setRoot(kEnv.getRootFile());
 				}
 				this.rescan();
@@ -273,10 +270,6 @@ class KconfigLangHandler
 		this.registerHandlers(context);
 		this.repo.setRoot(root);
 		this.doScan();
-
-		if (vscode.window.activeTextEditor?.document.languageId === 'properties') {
-			this.suggestKconfigRoot(this.propFile(vscode.window.activeTextEditor.document.uri));
-		}
 	}
 
 	deactivate() {
@@ -623,6 +616,8 @@ class KconfigLangHandler
 var langHandler: KconfigLangHandler;
 
 export function activate(context: vscode.ExtensionContext) {
+	const api = new Api();
+
 	if (kEnv.getConfig('disable')) {
 		return;
 	}
@@ -643,9 +638,13 @@ export function activate(context: vscode.ExtensionContext) {
 		langHandler.activate(context);
 	});
 
-	vscode.window.showInformationMessage("Hello fromafsdsdf Kconfig!");
+	vscode.window.showInformationMessage("Hello from Kconfig again!");
+	
+	setTimeout(() => {
+		console.log(api.activationCfg);
+	}, 1);
 
-	return new Api()
+	return api;
 }
 
 export function deactivate() {

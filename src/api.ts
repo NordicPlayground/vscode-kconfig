@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
+import { KconfigLangHandler } from './extension';
 import * as zephyr from './zephyr';
+import * as kEnv from './env';
 
 interface Context {
     /** Context ID number. Can be used to manipulate the context later. */
@@ -15,21 +17,34 @@ interface Context {
 class Api {
     public version = 1;
 
+    public activationCfg: {
+        kconfigRoot: vscode.Uri | undefined;
+        zephyrBoard: string | undefined;
+        west: string | undefined;
+    } = { kconfigRoot: undefined, zephyrBoard: undefined, west: undefined };
+
     async addContext(buildConfig: vscode.Uri, name?: string): Promise<void> {}
+
+    async removeContext(id: number) {}
 
     async setZephyrBase(uri: vscode.Uri): Promise<void> {
         return zephyr.setZephyrBase(uri);
     }
 
-    async setZephryBoard(board: string): Promise<void> {
+    setZephyrBoard(board: string): void {
+        vscode.window.showInformationMessage(`zephyr board set to ${board}`);
         return zephyr.updateBoardFromName(board);
     }
 
-    async setWest(uri: vscode.Uri) {
-        return zephyr.setWest(uri)
+    setKconfigRoot(appUri: vscode.Uri): void {
+        const root = kEnv.findRootFromApp(appUri);
+        vscode.window.showInformationMessage(`kconfig.root set to ${root}`);
+        kEnv.setConfig('root', root);
     }
 
-    async removeContext(id: number) {}
+    setWest(uri: vscode.Uri): void {
+        return zephyr.setWest(uri);
+    }
 
     async getDetails(id: number) {}
 }
