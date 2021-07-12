@@ -190,7 +190,6 @@ export class KconfigLangHandler
 			if (e.affectsConfiguration('kconfig')) {
 				kEnv.update();
 				if (e.affectsConfiguration('kconfig.root')) {
-					vscode.window.showInformationMessage("getting the root file")
 					this.repo.setRoot(kEnv.getRootFile());
 				}
 				this.rescan();
@@ -637,12 +636,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 		langHandler.activate(context);
 	});
-
-	vscode.window.showInformationMessage("Hello from Kconfig again!");
-	
-	setTimeout(() => {
-		console.log(api.activationCfg);
-	}, 1);
 
 	return api;
 }

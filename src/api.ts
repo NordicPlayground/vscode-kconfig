@@ -32,13 +32,11 @@ class Api {
     }
 
     setZephyrBoard(board: string): void {
-        vscode.window.showInformationMessage(`zephyr board set to ${board}`);
         return zephyr.updateBoardFromName(board);
     }
 
     setKconfigRoot(appUri: vscode.Uri): void {
         const root = kEnv.findRootFromApp(appUri);
-        vscode.window.showInformationMessage(`kconfig.root set to ${root}`);
         kEnv.setConfig('root', root);
     }
 
