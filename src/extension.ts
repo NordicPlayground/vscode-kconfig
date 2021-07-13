@@ -154,6 +154,8 @@ export class KconfigLangHandler
 					file = this.propFile(e.document.uri);
 					file.reparse(e.document);
 				}
+
+				this.suggestKconfigRoot(file);
 			} else if (e?.document) {
 				this.setKconfigLang(e.document);
 			}
@@ -180,6 +182,8 @@ export class KconfigLangHandler
 					file = this.propFile(d.uri);
 					file.onOpen(d);
 				}
+				
+				this.suggestKconfigRoot(file);
 			} else {
 				this.setKconfigLang(d);
 			}
@@ -269,6 +273,9 @@ export class KconfigLangHandler
 		this.registerHandlers(context);
 		this.repo.setRoot(root);
 		this.doScan();
+		if (vscode.window.activeTextEditor?.document.languageId === 'properties') {
+			this.suggestKconfigRoot(this.propFile(vscode.window.activeTextEditor.document.uri));
+		}
 	}
 
 	deactivate() {
