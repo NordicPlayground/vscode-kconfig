@@ -4,52 +4,46 @@
  * SPDX-License-Identifier: MIT
  */
 import * as vscode from 'vscode';
-import { KconfigLangHandler } from './extension';
 import * as zephyr from './zephyr';
 import * as kEnv from './env';
 
 interface Context {
-    /** Context ID number. Can be used to manipulate the context later. */
-    id: number;
-    /** Name of the context. */
-    name: string;
-    /**
-     * The current build configuration.
-     */
-    buildConfig: vscode.Uri;
+    config: Config;
+}
+
+interface Config { 
+    zephyrBase: vscode.Uri;
+    west: vscode.Uri;
+    appUri: vscode.Uri;
+    zephyrBoard?: string;
 }
 
 class Api {
     public version = 1;
 
-    public activationCfg: {
-        kconfigRoot: vscode.Uri | undefined;
-        zephyrBoard: string | undefined;
-        west: string | undefined;
-    } = { kconfigRoot: undefined, zephyrBoard: undefined, west: undefined };
+    async addContext(config: Config): Promise<Context> {
+        return {
+            config,
+        }
+    }
 
-    async addContext(buildConfig: vscode.Uri, name?: string): Promise<void> {}
-
-    async removeContext(id: number) {}
+    async setContext(context: Context): Promise<void> {
+        await zephyr.setZephyrBase(context.config.zephyrBase);
+        await zephyr.setWest(context.config.west);
+        const root = kEnv.findRootFromApp(context.config.appUri);
+        kEnv.setConfig('root', root);
+        if (context.config.zephyrBoard){
+            zephyr.updateBoardFromName(context.config.zephyrBoard);
+        }
+    }
 
     async setZephyrBase(uri: vscode.Uri): Promise<void> {
-        return zephyr.setZephyrBase(uri);
-    }
+        await zephyr.setZephyrBase(uri);
+    } 
 
-    setZephyrBoard(board: string): void {
-        return zephyr.updateBoardFromName(board);
+    async setWest(uri: vscode.Uri): Promise<void> {
+        await zephyr.setWest(uri);
     }
-
-    setKconfigRoot(appUri: vscode.Uri): void {
-        const root = kEnv.findRootFromApp(appUri);
-        kEnv.setConfig('root', root);
-    }
-
-    setWest(uri: vscode.Uri): void {
-        return zephyr.setWest(uri);
-    }
-
-    async getDetails(id: number) {}
 }
 
 export default Api;

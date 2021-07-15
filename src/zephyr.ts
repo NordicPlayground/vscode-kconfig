@@ -275,7 +275,7 @@ function getZephyrBase(): string | undefined {
 
 export async function setZephyrBase(uri: vscode.Uri): Promise<void> {
 	zephyrRoot = uri.fsPath;
-	kEnv.setConfig("zephyr.base", zephyrRoot);
+	await kEnv.setConfig("zephyr.base", zephyrRoot);
 }
 
 function openConfig(entry: string) {
@@ -355,9 +355,9 @@ async function checkIsZephyr(): Promise<boolean> {
 	return !!(board?.board && board.arch && board.dir);
 }
 
-export function setWest(westUri: vscode.Uri): void {
+export async function setWest(westUri: vscode.Uri): Promise<void> {
 	westExe = westUri.fsPath;
-	kEnv.setConfig("zephyr.west", westExe);
+	await kEnv.setConfig("zephyr.west", westExe);
 }
 
 function findWest() {
