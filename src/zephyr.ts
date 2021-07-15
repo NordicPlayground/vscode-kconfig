@@ -225,7 +225,7 @@ function activateZephyr(context: vscode.ExtensionContext) {
 
 	toggleBoardStatus(vscode.window.activeTextEditor);
 	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(toggleBoardStatus));
-	
+
 	if (process.env['ZEPHYR_SDK_INSTALL_DIR']) {
 		var toolchain_dir = `${zephyrRoot}/cmake/toolchain/zephyr`;
 		var toolchains = glob.sync('*.*/generic.cmake', {cwd: toolchain_dir}).map(g => g.replace(/\/.*/, ''));

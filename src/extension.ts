@@ -182,7 +182,6 @@ export class KconfigLangHandler
 					file = this.propFile(d.uri);
 					file.onOpen(d);
 				}
-				
 				this.suggestKconfigRoot(file);
 			} else {
 				this.setKconfigLang(d);
