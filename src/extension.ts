@@ -195,7 +195,7 @@ export class KconfigLangHandler
 				if (e.affectsConfiguration('kconfig.root')) {
 					this.repo.setRoot(kEnv.getRootFile());
 				}
-				this.rescan();
+				this.delayedRescan()
 			}
 		});
 		context.subscriptions.push(disposable);
