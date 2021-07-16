@@ -12,10 +12,10 @@ interface Context {
 }
 
 interface Config { 
-    zephyrBase: vscode.Uri;
-    west: vscode.Uri;
     appUri: vscode.Uri;
     zephyrBoard?: string;
+    zephyrBase?: vscode.Uri;
+    west?: vscode.Uri;
 }
 
 class Api {
@@ -28,15 +28,20 @@ class Api {
     }
 
     async setContext(context: Context): Promise<void> {
-        await zephyr.setZephyrBase(context.config.zephyrBase);
-        await zephyr.setWest(context.config.west);
+        const conf = context.config;
+        if (conf.zephyrBase){
+            await zephyr.setZephyrBase(conf.zephyrBase);
+        }
+        if (conf.west){
+            await zephyr.setWest(conf.west);
+        }
         const root = kEnv.findRootFromApp(context.config.appUri);
         kEnv.setConfig('root', root);
-        if (context.config.zephyrBoard){
-            zephyr.updateBoardFromName(context.config.zephyrBoard);
+        if (conf.zephyrBoard){
+            zephyr.updateBoardFromName(conf.zephyrBoard);
         }
     }
-
+ 
     async setZephyrBase(uri: vscode.Uri): Promise<void> {
         await zephyr.setZephyrBase(uri);
     } 
