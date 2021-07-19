@@ -15,7 +15,7 @@ interface Config {
     appUri: vscode.Uri;
     zephyrBoard?: string;
     zephyrBase?: vscode.Uri;
-    west?: vscode.Uri;
+    west?: vscode.Uri | string;
 }
 
 class Api {
@@ -41,13 +41,21 @@ class Api {
             zephyr.updateBoardFromName(conf.zephyrBoard);
         }
     }
- 
+    
+    /**
+     * Globally set zephyr base
+     * @param uri zephyr base path
+     */
     async setZephyrBase(uri: vscode.Uri): Promise<void> {
-        await zephyr.setZephyrBase(uri);
+        await zephyr.setZephyrBase(uri, vscode.ConfigurationTarget.Global);
     } 
-
-    async setWest(uri: vscode.Uri): Promise<void> {
-        await zephyr.setWest(uri);
+    
+    /**
+     * Globally set west
+     * @param uri west exe path
+     */
+    async setWest(uri: vscode.Uri | string): Promise<void> {
+        await zephyr.setWest(uri, vscode.ConfigurationTarget.Global);
     }
 }
 
