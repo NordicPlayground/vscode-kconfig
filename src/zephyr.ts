@@ -355,8 +355,8 @@ async function checkIsZephyr(): Promise<boolean> {
 	return !!(board?.board && board.arch && board.dir);
 }
 
-export async function setWest(westUri: vscode.Uri | string, target = vscode.ConfigurationTarget.Workspace): Promise<void> {
-	westExe = westUri instanceof vscode.Uri ? westUri.fsPath : westUri; 
+export async function setWest(westUri: string, target = vscode.ConfigurationTarget.Workspace): Promise<void> {
+	westExe = westUri; 
 	await kEnv.setConfig("zephyr.west", westExe, target);
 }
 

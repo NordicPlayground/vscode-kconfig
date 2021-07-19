@@ -11,11 +11,11 @@ interface Context {
     config: Config;
 }
 
-interface Config { 
+interface Config {
     appUri: vscode.Uri;
     zephyrBoard?: string;
     zephyrBase?: vscode.Uri;
-    west?: vscode.Uri | string;
+    west?: string;
 }
 
 class Api {
@@ -43,7 +43,7 @@ class Api {
     }
     
     /**
-     * Globally set zephyr base
+     * Globally set the location of zephyr base
      * @param uri zephyr base path
      */
     async setZephyrBase(uri: vscode.Uri): Promise<void> {
@@ -51,10 +51,10 @@ class Api {
     } 
     
     /**
-     * Globally set west
+     * Globally set the location of west exe
      * @param uri west exe path
      */
-    async setWest(uri: vscode.Uri | string): Promise<void> {
+    async setWest(uri: string): Promise<void> {
         await zephyr.setWest(uri, vscode.ConfigurationTarget.Global);
     }
 }
