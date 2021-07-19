@@ -41,12 +41,12 @@ export function getRoot() {
 }
 
 export function findRootFromApp(appUri: vscode.Uri) {
-	const appKConfig = path.join(appUri.fsPath, 'KConfig');
+	const appKconfig = path.join(appUri.fsPath, 'Kconfig');
 
-	if (fs.existsSync(appKConfig)) {
-		return appKConfig;
+	if (fs.existsSync(appKconfig)) {
+		return appKconfig;
 	} else {
-		return path.join(getConfig('zephyr.base'), 'KConfig');
+		return path.join(getConfig('zephyr.base'), 'Kconfig');
 	}
 }
 
