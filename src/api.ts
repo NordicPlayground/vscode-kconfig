@@ -41,22 +41,6 @@ class Api {
             zephyr.updateBoardFromName(conf.zephyrBoard);
         }
     }
-    
-    /**
-     * Globally set the location of zephyr base
-     * @param uri zephyr base path
-     */
-    async setZephyrBase(uri: vscode.Uri): Promise<void> {
-        await zephyr.setZephyrBase(uri, vscode.ConfigurationTarget.Global);
-    } 
-    
-    /**
-     * Globally set the location of west exe
-     * @param uri west exe path
-     */
-    async setWest(uri: string): Promise<void> {
-        await zephyr.setWest(uri, vscode.ConfigurationTarget.Global);
-    }
 }
 
 export default Api;
