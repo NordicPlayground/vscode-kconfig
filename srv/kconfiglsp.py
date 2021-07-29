@@ -1,13 +1,15 @@
-import functools
 import inspect
-from typing import Union, Optional, Callable, List, Dict
+from typing import Union, Optional, List, Dict
 import kconfiglib
 import sys
 import os
 import re
 import json
 import enum
+import argparse
+import subprocess
 from datetime import datetime
+from west.app.main import WestApp
 
 JSONRPC = '2.0'
 VERSION = '1.0'
@@ -73,9 +75,9 @@ def handler(method):
 	return wrapper
 
 class RPCServer:
-	def __init__(self):
-		self._send_stream = sys.stdout
-		self._recv_stream = sys.stdin
+	def __init__(self, istream=None, ostream=None):
+		self._send_stream = ostream if ostream else sys.stdout
+		self._recv_stream = istream if istream else sys.stdin
 		self.req = None
 		self.log_file = 'lsp.log'
 		self.running = True
@@ -95,6 +97,7 @@ class RPCServer:
 				f.write('dbg: ' + str(line) + '\n')
 
 	def log(self, *args):
+		sys.stderr.write('\n'.join(*args) + '\n')
 		with open(self.log_file, 'a') as f:
 			for line in args:
 				f.write('inf: ' + str(line) + '\n')
@@ -682,8 +685,8 @@ class MarkupContent:
 
 
 class LSPServer(RPCServer):
-	def __init__(self, name: str, version: str):
-		super().__init__()
+	def __init__(self, name: str, version: str, istream, ostream):
+		super().__init__(istream, ostream)
 		self.rootUri: str
 		self.workspaceFolders: List[WorkspaceFolder]
 		self.name = name
@@ -835,6 +838,42 @@ class LSPServer(RPCServer):
 # - DTS_POST_CPP -> ${PROJECT_BINARY_DIR}/${BOARD}.dts.pre.tmp
 # - DTS_ROOT_BINDINGS -> ${DTS_ROOTs}/dts/bindings
 
+class West(WestApp):
+
+	def build(self, pristine=False, board=None, build_dir=None, source_dir=None, target=None, cmake_options=[]):
+		args = []
+		if pristine:
+			args.append('-p')
+		if board:
+			args.append('-b')
+			args.append(board)
+		if build_dir:
+			args.append('-d')
+			args.append(build_dir)
+		if target:
+			args.append('-t')
+			args.append(target)
+		if source_dir:
+			args.append(source_dir)
+
+		if cmake_options:
+			args.append('--')
+			args.extend(cmake_options)
+
+		return self.run(args)
+
+	def modules(self):
+		result = {}
+		for line in self.run(['list', '-f', '{name}:{path}']).splitlines():
+			name, path = line.split(':', 1)
+			result[name] = path;
+		return result
+
+
+
+
+
+
 KCONFIG_WARN_LVL=Diagnostic.WARNING
 ID_SEP = '@'
 
@@ -857,6 +896,8 @@ class Kconfig(kconfiglib.Kconfig):
 		if doc:
 			doc.open(mode)
 			return doc
+		if os.path.isdir(filename):
+			raise kconfiglib.KconfigError(f'Attempting to open directory {filename} as file @{self.filename}:{self.linenr}')
 		return super()._open(filename, mode)
 
 	def _warn(self, msg, filename=None, linenr=None):
@@ -1038,13 +1079,19 @@ class KconfigContext:
 		self._kconfig: Optional[kconfiglib.Kconfig] = None
 		self.menu = None
 		self.cmd_diags = []
+		self.west = West()
 		# for file in conf_files:
 		# 	file.doc.on_change(lambda _: self.load_config())
+
+	@property
+	def build_dir(self):
+		return f'build_kconfig_{self.id}'
 
 	def parse(self):
 		self.menu = None
 		self.modified = {}
 		self.clear_diags()
+		self.west.build(pristine=True, board='nrf52840dk_nrf52840', build_dir=self.build_dir, source_dir='')
 		self._kconfig = Kconfig(self.docs, self._root)
 		self.version += 1
 
@@ -1211,8 +1258,8 @@ class BoardConf:
 
 
 class KconfigServer(LSPServer):
-	def __init__(self):
-		super().__init__('zephyr-kconfig', VERSION)
+	def __init__(self, istream=None, ostream=None):
+		super().__init__('zephyr-kconfig', VERSION, istream, ostream)
 		self._next_id = 0
 		self.last_ctx = None
 		self.board_conf = BoardConf('nrf52dk_nrf52832', 'arm', '/home/trond/ncs/zephyr/boards/arm/nrf52dk_nrf52832')
@@ -1374,10 +1421,7 @@ class KconfigServer(LSPServer):
 		contents.paragraph()
 		contents.add_markdown('Type: `{}`'.format(kconfiglib.TYPE_TO_STR[sym.type]))
 		contents.linebreak()
-		# if sym.user_value == None:
 		contents.add_markdown("Value: `{}`".format(sym.str_value))
-		# else:
-		# 	contents.add_markdown("Value: `{}`".format(sym.user_value))
 		contents.paragraph()
 
 		help = '\n\n'.join([n.help.replace('\n', ' ') for n in sym.nodes if n.help])
@@ -1386,14 +1430,23 @@ class KconfigServer(LSPServer):
 
 		return {'contents': contents}
 
-def launch_debug_server():
+def wait_for_debugger():
 	import debugpy
 	# 5678 is the default attach port in the VS Code debug configurations.
 	debugpy.listen(5678)
 	debugpy.wait_for_client()
 
+def parse_args():
+	parser = argparse.ArgumentParser()
+	parser.add_argument('--debug', action='store_true', help='Enable debug mode. Will wait for a debugger to attach before starting the server.')
+	parser.add_argument('--west', type=str, help='Path to West')
+	return parser.parse_args()
 
 if __name__ == "__main__":
-	launch_debug_server()
+	args = parse_args()
+
+	if args.debug:
+		wait_for_debugger()
+
 	srv = KconfigServer()
 	srv.loop()
