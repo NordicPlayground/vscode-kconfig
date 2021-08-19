@@ -556,6 +556,11 @@ class KconfigServer(LSPServer):
 			self.dbg(f'Command line: {len(self.last_ctx.cmd_diags)}')
 			self.publish_diags(Uri.file('command-line'), self.last_ctx.cmd_diags)
 
+		# TODO: Add handling of Kconfig changes:
+		# - Reparse the active configuration
+		# - Mark other configurations as dirty
+		# - Rerun last_ctx.load_config()?
+
 	@handler('kconfig/setMenu')
 	def handle_set_menu(self, params):
 		ctx = self.ctx[params['ctx']]

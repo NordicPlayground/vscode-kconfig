@@ -151,6 +151,20 @@ export async function activate(ctx: vscode.ExtensionContext) {
     client = new LanguageClient('Zephyr Kconfig', serverOptions, clientOptions);
     await client.start();
 
+    await client.onReady();
+
+    await addBuild(
+		vscode.Uri.joinPath(
+			vscode.workspace.workspaceFolders?.[0].uri ?? vscode.Uri.file(''),
+			'samples',
+			'bluetooth',
+			'mesh',
+			'light',
+			'build'
+		)
+	);
+}
+
 interface AddBuildParams {
     root: string;
     env: typeof process.env;

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import sys
 from os import environ, path
 import argparse

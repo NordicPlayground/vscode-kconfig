@@ -32,9 +32,7 @@
 		"Zephyr RTOS"
 	],
 	"activationEvents": [
-		"onLanguage:kconfig",
-		"onLanguage:properties",
-		"workspaceContains:Kconfig"
+		"*"
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
