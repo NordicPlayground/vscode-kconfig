@@ -325,6 +325,7 @@ class TextDocument:
 		self._inside = False
 		self._mode = None
 		self._scanpos = 0
+		self.lines = []
 		self._cbs = []
 		self._virtual = self.uri.scheme != 'file'
 		self.loaded = False
