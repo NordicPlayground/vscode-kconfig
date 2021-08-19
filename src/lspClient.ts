@@ -11,6 +11,8 @@ import {
 	ServerOptions,
     TransportKind,
 } from 'vscode-languageclient/node';
+import { westEnv } from './zephyr';
+import { existsSync, readFile } from 'fs';
 
 var client: LanguageClient
 
@@ -184,5 +186,129 @@ export function activate(ctx: vscode.ExtensionContext) {
     };
 
     client = new LanguageClient('Zephyr Kconfig', serverOptions, clientOptions);
-    client.start()
+
+interface AddBuildParams {
+    root: string;
+    env: typeof process.env;
+    conf: string[]
+}
+
+interface CMakeCache {
+    [name: string]: string[];
+}
+
+function parseCmakeCache(uri: vscode.Uri): Promise<CMakeCache> {
+    return new Promise<CMakeCache>((resolve, reject) => {
+        readFile(uri.fsPath, {encoding: 'utf-8'}, (err, data) =>{
+            if (err) {
+                reject(err);
+            } else {
+                const lines = data.split(/\r?\n/g);
+                const entries: CMakeCache = {};
+                lines.forEach(line => {
+                    const match = line.match(/^(\w+)(?::\w+)?\=(.*)/);
+                    if (match) {
+                        entries[match[1]] = match[2].trim().split(';');
+                    }
+                });
+
+                resolve(entries);
+            }
+        })
+    })
+}
+
+interface ZephyrModule {
+    name: string;
+    path: string;
+}
+
+function parseZephyrModules(uri: vscode.Uri): Promise<ZephyrModule[]> {
+    return new Promise<ZephyrModule[]>((resolve, reject) => {
+        readFile(uri.fsPath, {encoding: 'utf-8'}, (err, data) => {
+            if (err) {
+                reject(err);
+            } else {
+                const lines = data.split(/\r?\n/g);
+                const modules = new Array<ZephyrModule>();
+                lines.forEach(line => {
+                    const match = line.match(/^"([^"]+)":"([^"]+)"/);
+                    if (match) {
+                        modules.push({
+                            name: match[1],
+                            path: match[2],
+                        });
+                    }
+                });
+
+                resolve(modules);
+            }
+        })
+    })
+}
+
+interface BuildResponse {
+    id: number;
+}
+
+export async function addBuild(uri: vscode.Uri) {
+	const cache = await parseCmakeCache(vscode.Uri.joinPath(uri, 'CMakeCache.txt'));
+	const modules = await parseZephyrModules(vscode.Uri.joinPath(uri, 'zephyr_modules.txt'));
+
+	const board = cache['CACHED_BOARD'][0];
+	const boardDir = cache['BOARD_DIR'][0];
+	const arch = path.basename(path.dirname(boardDir));
+
+	const appKconfig = path.join(cache['APPLICATION_SOURCE_DIR'][0], 'Kconfig');
+	const zephyrKconfig = path.join(cache['ZEPHYR_BASE'][0], 'Kconfig');
+
+	let root: string;
+	if ('KCONFIG_ROOT' in cache) {
+		root = cache['KCONFIG_ROOT'][0];
+	} else if (existsSync(appKconfig)) {
+		root = appKconfig;
+	} else {
+		root = zephyrKconfig;
+	}
+
+	const env: typeof process.env = {
+		...westEnv,
+		ZEPHYR_BASE: cache['ZEPHYR_BASE']?.[0],
+		ZEPHYR_TOOLCHAIN_VARIANT: cache['ZE_HYR_TOOLCHAIN_VARIANT']?.[0],
+		PYTHON_EXECUTABLE: cache['PYTHON_PREFER_EXECUTABLE']?.[0],
+		srctree: cache['ZEPHYR_BASE']?.[0],
+		// KERNELVERSION:
+		KCONFIG_CONFIG: vscode.Uri.joinPath(uri, 'zephyr', '.config').fsPath,
+		ARCH: arch,
+		ARCH_DIR: path.join(cache['ZEPHYR_BASE'][0], 'arch'),
+		BOARD_DIR: boardDir,
+		KCONFIG_BINARY_DIR: vscode.Uri.joinPath(uri, 'Kconfig').fsPath,
+		TOOLCHAIN_KCONFIG_DIR: path.join(
+			cache['TOOLCHAIN_ROOT'][0],
+			'cmake',
+			'toolchain',
+			cache['ZEPHYR_TOOLCHAIN_VARIANT'][0]
+		),
+		EDT_PICKLE: vscode.Uri.joinPath(uri, 'zephyr', 'edt.pickle').fsPath,
+	};
+
+	modules.forEach((module) => {
+        const name = module.name.toUpperCase().replace(/[^\w]/g, '_');
+		env[`ZEPHYR_${name}_MODULE_DIR`] = module.path;
+		env[`ZEPHYR_${name}_KCONFIG`] = path.join(module.path, 'Kconfig');
+	});
+
+	Object.assign(env, {
+		SHIELD_AS_LIST: cache['CACHED_SHIELD']?.join('\\;'),
+		DTS_POST_CPP: vscode.Uri.joinPath(uri, 'zephyr', `${board}.dts.pre.tmp`).fsPath,
+		DTS_ROOT_BINDINGS: cache['CACHED_DTS_ROOT_BINDINGS'].join('?'),
+
+        // KCONFIG_FUNCTIONS: path.join(cache['ZEPHYR_BASE'][0], 'scripts', 'kconfig', 'kconfigfunctions')
+	});
+
+	return client.sendRequest<BuildResponse>('kconfig/addBuild', {
+		root,
+		env,
+		conf: cache['CACHED_CONF_FILE'] ?? [],
+	} as AddBuildParams);
 }

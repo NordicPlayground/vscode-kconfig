@@ -512,9 +512,9 @@ class KconfigServer(LSPServer):
 
 		return ctx.symbol_at(uri, Position.create(params['position']))
 
-	@handler('kconfig/createCtx')
-	def handle_create_ctx(self, params):
-		ctx = self.create_ctx(params['root'], [ConfFile(f) for f in params['conf']], params['env'])
+	@handler('kconfig/addBuild')
+	def handle_add_build(self, params):
+		ctx = self.create_ctx(params['root'], [ConfFile(Uri.file(f)) for f in params['conf']], params['env'])
 		return {'id': ctx.id}
 
 	@handler('kconfig/search')
