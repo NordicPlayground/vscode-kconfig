@@ -40,6 +40,7 @@ ID_SEP = '@'
 class KconfigErrorCode(enum.IntEnum):
 	UNKNOWN_NODE = 1
 	DESYNC = 2
+	PARSING_FAILED = 3
 
 class Kconfig(kconfiglib.Kconfig):
 	def __init__(self, filename='Kconfig'):
@@ -478,7 +479,12 @@ class KconfigServer(LSPServer):
 		id = self._next_id
 		ctx = KconfigContext(root, conf_files, env, id)
 		self.dbg('Parsing...')
-		ctx.parse()
+		try:
+			ctx.parse()
+		except kconfiglib.KconfigError as e:
+			self.dbg('Parsing failed: ' + str(e))
+			raise RPCError(KconfigErrorCode.PARSING_FAILED, str(e))
+
 		self.dbg('Load config...')
 		try:
 			ctx.load_config()
