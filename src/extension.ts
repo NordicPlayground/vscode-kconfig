@@ -585,10 +585,9 @@ export class KconfigLangHandler
 }
 
 export var langHandler: KconfigLangHandler | undefined;
-var active = false;
 
 export function activate(context: vscode.ExtensionContext) {
-	lsp.client.start();
+	lsp.activate(context);
 }
 
 export function deactivate() {
