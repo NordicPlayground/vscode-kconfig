@@ -117,7 +117,7 @@ class BuildConf {
 }
 
 async function scanForBuilds() {
-    return vscode.workspace.findFiles('CMakeCache.txt', null).map(async uri => await BuildConf.fromBuildDir(uri)).filter(Boolean);
+    return vscode.workspace.findFiles('CMakeCache.txt', null).then(uris => uris.map(async uri => await BuildConf.fromBuildDir(uri)).filter(Boolean));
 }
 
 export function activate(ctx: vscode.ExtensionContext) {
