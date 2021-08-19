@@ -1,4 +1,5 @@
 import inspect
+import os
 from typing import Union, Optional, List, Dict
 import sys
 import re
@@ -209,6 +210,10 @@ class Uri:
 		if not isinstance(o, Uri):
 			return NotImplemented
 		return str(self) == str(o)
+
+	@property
+	def basename(self):
+		return os.path.basename(self.path)
 
 	@staticmethod
 	def parse(raw: str):
