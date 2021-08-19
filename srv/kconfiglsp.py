@@ -284,7 +284,7 @@ class KconfigContext:
 		self.version = 0
 		self.docs = docs
 		self._root = root
-		self._kconfig: Optional[kconfiglib.Kconfig] = None
+		self._kconfig: Optional[Kconfig] = None
 		self.menu = None
 		self.cmd_diags = []
 		self.west = West()
@@ -313,6 +313,9 @@ class KconfigContext:
 		return any([(file.doc.uri == uri) for file in self.conf_files])
 
 	def _node_id(self, node: kconfiglib.MenuNode):
+		if not self._kconfig:
+			return ''
+
 		if node == self._kconfig.top_node:
 			parts = ['MAINMENU']
 		elif node.item == kconfiglib.MENU:
@@ -378,7 +381,8 @@ class KconfigContext:
 			sym.unset_value()
 
 	def get(self, name) -> kconfiglib.Symbol:
-		return self._kconfig.syms.get(name)
+		if self._kconfig:
+			return self._kconfig.syms.get(name)
 
 	def conf_file(self, uri):
 		return next((file for file in self.conf_files if file.doc.uri == uri), None)
