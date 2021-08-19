@@ -5,9 +5,6 @@ import os
 import re
 import enum
 import argparse
-from west.app.main import WestApp
-from lsp import CompletionItemKind, DocumentStore, Diagnostic, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Uri, TextDocument, Range, handler
-
 from lsp import CompletionItemKind, Diagnostic, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Uri, TextDocument, Range, handler, documentStore
 
 VERSION = '1.0'
@@ -36,36 +33,6 @@ VERSION = '1.0'
 # - DTS_POST_CPP -> ${PROJECT_BINARY_DIR}/${BOARD}.dts.pre.tmp
 # - DTS_ROOT_BINDINGS -> ${DTS_ROOTs}/dts/bindings
 
-class West(WestApp):
-
-	def build(self, pristine=False, board=None, build_dir=None, source_dir=None, target=None, cmake_options=[]):
-		args = []
-		if pristine:
-			args.append('-p')
-		if board:
-			args.append('-b')
-			args.append(board)
-		if build_dir:
-			args.append('-d')
-			args.append(build_dir)
-		if target:
-			args.append('-t')
-			args.append(target)
-		if source_dir:
-			args.append(source_dir)
-
-		if cmake_options:
-			args.append('--')
-			args.extend(cmake_options)
-
-		return self.run(args)
-
-	def modules(self):
-		result = {}
-		for line in self.run(['list', '-f', '{name}:{path}']).splitlines():
-			name, path = line.split(':', 1)
-			result[name] = path;
-		return result
 
 KCONFIG_WARN_LVL=Diagnostic.WARNING
 ID_SEP = '@'
@@ -298,8 +265,7 @@ class KconfigContext:
 		self._root = root
 		self._kconfig: Optional[Kconfig] = None
 		self.menu = None
-		self.cmd_diags = []
-		self.west = West()
+		self.cmd_diags: List[Diagnostic] = []
 		# for file in conf_files:
 		# 	file.doc.on_change(lambda _: self.load_config())
 
@@ -676,7 +642,6 @@ def wait_for_debugger():
 def parse_args():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--debug', action='store_true', help='Enable debug mode. Will wait for a debugger to attach before starting the server.')
-	parser.add_argument('--west', type=str, help='Path to West')
 	return parser.parse_args()
 
 if __name__ == "__main__":
