@@ -20,7 +20,7 @@ const SOC_ARCH_FILE = vscode.Uri.parse('kconfig://zephyr/binary.dir/Kconfig.soc.
 export var zephyrRoot: string | undefined;
 var westVersion: string;
 var westExe: string;
-var westEnv = process.env;
+export var westEnv = process.env;
 
 function west(args: string[], callback?: (err: ExecException | null, stdout: string) => void): string {
 	var command = westExe + ' ' + args.join(' ');
