@@ -401,9 +401,9 @@ class KconfigContext:
 			conf.diags.clear()
 
 	def symbols(self, filter):
-		if filter.startswith('CONFIG_'):
+		if filter and filter.startswith('CONFIG_'):
 			filter = filter[len('CONFIG_'):]
-		return [sym for sym in self._kconfig.syms.values() if _filter_match(filter, sym.name)]
+		return [sym for sym in self._kconfig.syms.values() if not filter or _filter_match(filter, sym.name)]
 
 	def symbol_search(self, query):
 		return map(_symbolitem, self.symbols(query))
@@ -616,11 +616,13 @@ class KconfigServer(LSPServer):
 
 		pos = Position.create(params['position'])
 		line = doc.line(pos.line)
-		prefix = line[:pos.character]
-		word = prefix.lstrip()
-		if len(word) > 0 and not word.startswith('CONFIG_'):
-			self.dbg('Word "{}" doesnt start with CONFIG_ on line "{}" (prefix: "{}")'.format(word, line, prefix))
-			return
+		if line:
+			prefix = line[:pos.character]
+			word = prefix.lstrip()
+			if len(word) > 0 and not word.startswith('CONFIG_'):
+				word = 'CONFIG_' + word
+		else:
+			word = None
 
 		items = [{
 				'label': 'CONFIG_' + sym.name,
