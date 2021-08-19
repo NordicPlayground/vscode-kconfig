@@ -272,6 +272,17 @@ class ConfFile:
 		return [entry for entry in self.entries() if entry.name == name]
 
 
+class BoardConf:
+	def __init__(self, name, arch, dir):
+		self.name = name
+		self.arch = arch
+		self.dir = dir
+
+	@property
+	def conf_file(self):
+		return os.path.join(self.dir, self.name + '_defconfig')
+
+
 class KconfigContext:
 	"""A single instance of a kconfig compilation.
 	   Represents one configuration of one application, equalling a single
@@ -481,18 +492,6 @@ class KconfigContext:
 		word = doc.word_at(pos)
 		if word and word.startswith('CONFIG_'):
 			return self.get(word[len('CONFIG_'):])
-
-
-class BoardConf:
-	def __init__(self, name, arch, dir):
-		self.name = name
-		self.arch = arch
-		self.dir = dir
-
-	@property
-	def conf_files(self):
-		return [os.path.join(self.dir, self.name + '_defconfig')]
-
 
 class KconfigServer(LSPServer):
 	def __init__(self, istream=None, ostream=None):
