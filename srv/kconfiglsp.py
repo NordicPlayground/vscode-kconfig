@@ -299,6 +299,8 @@ class KconfigContext:
 		self.menu = None
 		self.modified = {}
 		self.clear_diags()
+		for key, value in self.env.items():
+			os.environ[key] = value
 
 		functions_path = os.path.join(self.env['ZEPHYR_BASE'], 'scripts', 'kconfig')
 		if not functions_path in sys.path:
