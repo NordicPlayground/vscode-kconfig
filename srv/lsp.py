@@ -626,6 +626,22 @@ class Diagnostic:
 
 		return obj
 
+	@staticmethod
+	def err(message, range):
+		return Diagnostic(message, range, Diagnostic.ERROR)
+
+	@staticmethod
+	def warn(message, range):
+		return Diagnostic(message, range, Diagnostic.WARNING)
+
+	@staticmethod
+	def info(message, range):
+		return Diagnostic(message, range, Diagnostic.INFORMATION)
+
+	@staticmethod
+	def hint(message, range):
+		return Diagnostic(message, range, Diagnostic.HINT)
+
 class MarkupContent:
 	PLAINTEXT = 'plaintext'
 	MARKDOWN = 'markdown'
@@ -676,6 +692,7 @@ class MarkupContent:
 	def code(lang, value):
 		return MarkupContent.markdown('```{}\n{}\n```'.format(lang, value))
 
+documentStore = DocumentStore()
 
 class LSPServer(RPCServer):
 	def __init__(self, name: str, version: str, istream, ostream):
@@ -685,7 +702,7 @@ class LSPServer(RPCServer):
 		self.name = name
 		self.version = version
 		self.trace = 'off'
-		self.docs = DocumentStore()
+		self.docs = documentStore
 
 	def capabilities(self):
 		def has(method):

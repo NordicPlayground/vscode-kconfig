@@ -239,19 +239,36 @@ class KconfigMenu:
 			'items': self.items,
 		}
 
+class ConfEntry:
+	def __init__(self, name: str, range: Range, value: str, value_range: Range):
+		self.name = name
+		self.range = range
+		self.value = value
+		self.value_range = value_range
 
 class ConfFile:
-	def __init__(self, doc: TextDocument):
-		self.doc = doc
-		self.diags = []
+	def __init__(self, uri: Uri):
+		self.uri = uri
+		self.diags: List[Diagnostic] = []
 
-	def find(self, name):
+	@property
+	def doc(self) -> TextDocument:
+		return documentStore.get(self.uri)
+
+	def entries(self) -> List[ConfEntry]:
 		entries = []
 		for linenr, line in enumerate(self.doc.lines):
-			match = re.match(r'^\s*(CONFIG_' + name + r')\s*\=', line)
+			match = re.match(r'^\s*(CONFIG_(\w+))\s*\=("[^"]+"|\w+)', line)
 			if match:
-				entries.append(Range(Position(linenr, match.start(1)), Position(linenr, match.end(1))))
+				range = Range(
+					Position(linenr, match.start(1)), Position(linenr, match.end(1)))
+				value_range = Range(
+					Position(linenr, match.start(3)), Position(linenr, match.end(3)))
+				entries.append(ConfEntry(match[2], range, match[3], value_range))
 		return entries
+
+	def find(self, name) -> List[ConfEntry]:
+		return [entry for entry in self.entries() if entry.name == name]
 
 
 class KconfigContext:
@@ -397,9 +414,9 @@ class KconfigContext:
 				continue
 
 			if len(sym.str_value):
-				warn = f'CONFIG_{sym.name} couldn\'t be set.'
-			else:
 				warn = f'CONFIG_{sym.name} was assigned the value {user_val}, but got the value {sym.str_value}.'
+			else:
+				warn = f'CONFIG_{sym.name} couldn\'t be set.'
 			deps = [kconfiglib.expr_str(dep) for dep in _missing_deps(sym)]
 			if deps:
 				warn += ' Missing dependencies:\n'
@@ -407,8 +424,23 @@ class KconfigContext:
 
 			for file in self.conf_files:
 				entries = file.find(sym.name)
-				for range in entries:
-					file.diags.append(Diagnostic(warn, range))
+				for entry in entries:
+					file.diags.append(Diagnostic(warn, entry.range))
+
+		for file in self.conf_files:
+			for entry in file.entries():
+				if entry.name in self._kconfig.syms:
+					actual: kconfiglib.Symbol = self._kconfig.syms[entry.name]
+					if actual.type == kconfiglib.BOOL:
+						if entry.value not in ['y', 'n']:
+							file.diags.append(Diagnostic.err(f'Expected "y" or "n"', entry.value_range))
+					elif actual.type == kconfiglib.HEX:
+						if not re.match(r'^0x[a-fA-F\d]+$', entry.value):
+							file.diags.append(Diagnostic.err(f'Expected hex value', entry.value_range))
+					elif actual.type == kconfiglib.INT:
+						if not re.match(r'^\d+$', entry.value):
+							file.diags.append(Diagnostic.err(f'Expected integer', entry.value_range))
+
 
 	def _lint(self):
 		self._check_user_vals()
