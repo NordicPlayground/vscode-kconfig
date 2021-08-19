@@ -281,6 +281,7 @@ class KconfigContext:
 		self.env = env
 		self.conf_files = conf_files
 		self.id = id
+		self.board = BoardConf(env['BOARD'], env['ARCH'], env['BOARD_DIR'])
 		self.version = 0
 		self.docs = docs
 		self._root = root
@@ -454,8 +455,11 @@ class KconfigContext:
 	def load_config(self):
 		self.clear_diags()
 
-		for i, file in enumerate(self.conf_files):
-			self._kconfig.load_config(file.doc.uri.path, replace=(i == 0))
+		self._kconfig.load_config(self.board.conf_file, replace=True)
+
+		for file in self.conf_files:
+			self._kconfig.load_config(file.doc.uri.path, replace=False)
+
 		self._lint()
 
 		for filename, diags in self._kconfig.diags.items():
@@ -508,7 +512,7 @@ class KconfigServer(LSPServer):
 	def create_ctx(self, root, conf_files, env):
 		self.dbg('Creating context...')
 		id = self._next_id
-		ctx = KconfigContext(self.docs, root, [ConfFile(self.docs.create(Uri.file(file))) for file in self.board_conf.conf_files] + conf_files, env, id)
+		ctx = KconfigContext(self.docs, root, conf_files, env, id)
 		self.dbg('Parsing...')
 		ctx.parse()
 		self.dbg('Load config...')
