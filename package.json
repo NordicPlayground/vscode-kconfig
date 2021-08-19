@@ -103,6 +103,10 @@
 				"command": "kconfig.zephyr.setBoard",
 				"title": "Kconfig: Set board for Zephyr",
 				"enablement": "workspaceFolderCount > 0"
+			},
+			{
+				"command": "kconfig.add",
+				"title": "Kconfig: Add build folder"
 			}
 		],
 		"languages": [

@@ -115,6 +115,18 @@ class BuildConf {
 }
 
 export async function activate(ctx: vscode.ExtensionContext) {
+    vscode.commands.registerCommand('kconfig.add', () => {
+        vscode.window
+			.showOpenDialog({
+				canSelectFolders: true,
+				openLabel: 'Add',
+				defaultUri: vscode.workspace.workspaceFolders?.[0].uri,
+			})
+			?.then((uris) => {
+				if (uris) {
+					addBuild(uris[0]);
+				}
+			});
     });
 
     const serverOptions: ServerOptions = {
