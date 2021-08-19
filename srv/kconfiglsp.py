@@ -535,12 +535,14 @@ class KconfigServer(LSPServer):
 			'symbols': ctx.symbol_search(params['query']),
 		}
 
-	@handler('textDocument/didOpen')
-	def handle_open(self, params):
-		result = super().handle_open(params)
-		if params['textDocument'].get('languageId') == 'properties':
-			self.create_ctx('Kconfig', [ConfFile(self.docs.get(Uri.parse(params['textDocument']['uri'])))], {})
-		return result
+	# TODO: This attempts to create a virtual configuration from the open prj.conf file.
+	# This needs a bit more thought to work, as we'll need to emulate the build files
+	# @handler('textDocument/didOpen')
+	# def handle_open(self, params):
+	# 	result = super().handle_open(params)
+	# 	if params['textDocument'].get('languageId') == 'properties':
+	# 		self.create_ctx('Kconfig', [ConfFile(self.docs.get(Uri.parse(params['textDocument']['uri'])))], {})
+	# 	return result
 
 	@handler('textDocument/didChange')
 	def handle_change(self, params):
