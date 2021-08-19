@@ -702,7 +702,6 @@ class LSPServer(RPCServer):
 		self.name = name
 		self.version = version
 		self.trace = 'off'
-		self.docs = documentStore
 
 	def capabilities(self):
 		def has(method):

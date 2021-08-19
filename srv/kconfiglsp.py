@@ -8,6 +8,8 @@ import argparse
 from west.app.main import WestApp
 from lsp import CompletionItemKind, DocumentStore, Diagnostic, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Uri, TextDocument, Range, handler
 
+from lsp import CompletionItemKind, Diagnostic, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Uri, TextDocument, Range, handler, documentStore
+
 VERSION = '1.0'
 
 #################################################################################################################################
@@ -73,9 +75,8 @@ class KconfigErrorCode(enum.IntEnum):
 	DESYNC = 2
 
 class Kconfig(kconfiglib.Kconfig):
-	def __init__(self, docs: DocumentStore, filename='Kconfig'):
-		self.diags: Dict[str, Diagnostic] = {}
-		self.docs = docs
+	def __init__(self, filename='Kconfig'):
+		self.diags: Dict[str, List[Diagnostic]] = {}
 		super().__init__(filename, True, False)
 		self.warn_assign_undef = True
 		self.warn_assign_override = True
@@ -83,7 +84,7 @@ class Kconfig(kconfiglib.Kconfig):
 
 	# Overriding _open to work on virtual file storage when required:
 	def _open(self, filename, mode):
-		doc = self.docs.get(Uri.file(filename))
+		doc = documentStore.get(Uri.file(filename))
 		if doc:
 			doc.open(mode)
 			return doc
@@ -277,13 +278,12 @@ class KconfigContext:
 	   build in Zephyr.
 	"""
 
-	def __init__(self, docs: DocumentStore, root, conf_files: List[ConfFile]=[], env={}, id=0):
+	def __init__(self, root, conf_files: List[ConfFile]=[], env={}, id=0):
 		self.env = env
 		self.conf_files = conf_files
 		self.id = id
 		self.board = BoardConf(env['BOARD'], env['ARCH'], env['BOARD_DIR'])
 		self.version = 0
-		self.docs = docs
 		self._root = root
 		self._kconfig: Optional[Kconfig] = None
 		self.menu = None
@@ -307,7 +307,7 @@ class KconfigContext:
 		if not functions_path in sys.path:
 			sys.path.append(functions_path)
 
-		self._kconfig = Kconfig(self.docs, self._root)
+		self._kconfig = Kconfig(self._root)
 		self.version += 1
 
 	def has_file(self, uri):
@@ -474,7 +474,7 @@ class KconfigContext:
 					self.cmd_diags.extend(diags)
 
 	def symbol_at(self, uri, pos):
-		doc = self.docs.get(uri)
+		doc = documentStore.get(uri)
 		if not doc:
 			return
 
@@ -499,7 +499,6 @@ class KconfigServer(LSPServer):
 		super().__init__('zephyr-kconfig', VERSION, istream, ostream)
 		self._next_id = 0
 		self.last_ctx = None
-		self.board_conf = BoardConf('nrf52dk_nrf52832', 'arm', '/home/trond/ncs/zephyr/boards/arm/nrf52dk_nrf52832')
 		self.ctx: Dict[int, KconfigContext] = {}
 		self.dbg('Python version: ' + sys.version)
 
@@ -512,7 +511,7 @@ class KconfigServer(LSPServer):
 	def create_ctx(self, root, conf_files, env):
 		self.dbg('Creating context...')
 		id = self._next_id
-		ctx = KconfigContext(self.docs, root, conf_files, env, id)
+		ctx = KconfigContext(root, conf_files, env, id)
 		self.dbg('Parsing...')
 		ctx.parse()
 		self.dbg('Load config...')
@@ -610,7 +609,7 @@ class KconfigServer(LSPServer):
 			self.dbg('No context for {}'.format(uri.path))
 			return
 
-		doc = self.docs.get(uri)
+		doc = documentStore.get(uri)
 		if not doc:
 			self.dbg('Unknown document')
 			return
