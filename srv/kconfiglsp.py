@@ -282,7 +282,11 @@ class KconfigContext:
 		self.menu = None
 		self.modified = {}
 		self.clear_diags()
-		self.west.build(pristine=True, board='nrf52840dk_nrf52840', build_dir=self.build_dir, source_dir='')
+
+		functions_path = os.path.join(self.env['ZEPHYR_BASE'], 'scripts', 'kconfig')
+		if not functions_path in sys.path:
+			sys.path.append(functions_path)
+
 		self._kconfig = Kconfig(self.docs, self._root)
 		self.version += 1
 
