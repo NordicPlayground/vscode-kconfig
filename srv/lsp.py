@@ -698,6 +698,36 @@ class MarkupContent:
 	def code(lang, value):
 		return MarkupContent.markdown('```{}\n{}\n```'.format(lang, value))
 
+NEXT_TABSTOP=-1
+
+class Snippet:
+	def __init__(self, value=''):
+		self.text = value
+		self._next_tabstop = 1
+
+	def add_text(self, text):
+		self.text += text
+
+	def add_tabstop(self, number=NEXT_TABSTOP):
+		if number == NEXT_TABSTOP:
+			number = self._next_tabstop
+
+		self.text += ''.join(['${', str(number), '}'])
+		self._next_tabstop = number + 1
+
+	def add_placeholder(self, text, number=NEXT_TABSTOP):
+		if number == NEXT_TABSTOP:
+			number = self._next_tabstop
+		self.text += ''.join(['${', str(number), ':', text, '}'])
+		self._next_tabstop = number + 1
+
+	def add_choice(self, choices, number=NEXT_TABSTOP):
+		if number == NEXT_TABSTOP:
+			number = self._next_tabstop
+		self.text += ''.join(['${', str(number), '|', ','.join(choices), '|}'])
+		self._next_tabstop = number + 1
+
+
 documentStore = DocumentStore()
 
 class LSPServer(RPCServer):

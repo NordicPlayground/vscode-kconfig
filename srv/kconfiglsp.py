@@ -602,12 +602,28 @@ class KconfigServer(LSPServer):
 		else:
 			word = None
 
+		def insert_text(sym: kconfiglib.Symbol):
+			insert = Snippet('CONFIG_')
+			insert.add_text(sym.name)
+			insert.add_text('=')
+			if sym.type in [kconfiglib.BOOL, kconfiglib.TRISTATE]:
+				choices = [kconfiglib.TRI_TO_STR[val] for val in list(sym.assignable)]
+				insert.add_choice(choices)
+			elif sym.type == kconfiglib.STRING:
+				insert.add_text('"')
+				insert.add_tabstop()
+				insert.add_text('"')
+			else:
+				pass # freeform value
+
+			return insert.text
+
 		items = [{
 				'label': 'CONFIG_' + sym.name,
 				'kind': CompletionItemKind.VARIABLE,
 				'detail': kconfiglib.TYPE_TO_STR[sym.type],
-				'documentation': next((n.help.replace('\n', ' ') for n in sym.nodes if n.help), ' ')
-				# TODO: Add snippet completion and completion resolve
+				'documentation': next((n.help.replace('\n', ' ') for n in sym.nodes if n.help), ' '),
+				'insertText': insert_text(sym),
 			}
 			for sym in ctx.symbols(word) if any(node.prompt for node in sym.nodes)]
 
