@@ -209,11 +209,51 @@ class KconfigMenu:
 		}
 
 class ConfEntry:
-	def __init__(self, name: str, range: Range, value: str, value_range: Range):
+	def __init__(self, name: str, range: Range, assignment: str, value_range: Range):
 		self.name = name
 		self.range = range
-		self.value = value
+		self.raw = assignment.strip()
 		self.value_range = value_range
+
+	@property
+	def full_range(self):
+		return Range(self.range.start, self.value_range.end)
+
+	def is_string(self):
+		return self.raw.startswith('"') and self.raw.endswith('"')
+
+	def is_bool(self):
+		return self.raw in ['y', 'n']
+
+	def is_hex(self):
+		return re.match(r'0x[a-fA-F\d]+', self.raw)
+
+	def is_int(self):
+		return re.match(r'\d+', self.raw)
+
+	@property
+	def value(self):
+		if self.is_string():
+			return self.raw[1:-1] # strip out quotes
+		if self.is_bool():
+			return self.raw == 'y'
+		if self.is_hex():
+			return int(self.raw, 16)
+		if self.is_int():
+			return int(self.raw)
+
+	@property
+	def type(self):
+		if self.is_string():
+			return kconfiglib.TYPE_TO_STR[kconfiglib.STRING]
+		if self.is_hex():
+			return kconfiglib.TYPE_TO_STR[kconfiglib.HEX]
+		if self.is_int():
+			return kconfiglib.TYPE_TO_STR[kconfiglib.INT]
+		if self.is_bool():
+			return kconfiglib.TYPE_TO_STR[kconfiglib.BOOL]
+
+		return kconfiglib.TYPE_TO_STR[kconfiglib.UNKNOWN]
 
 class ConfFile:
 	def __init__(self, uri: Uri):
@@ -412,23 +452,19 @@ class KconfigContext:
 				for entry in entries:
 					file.diags.append(Diagnostic(warn, entry.range))
 
+	def _check_types(self):
 		for file in self.conf_files:
 			for entry in file.entries():
 				if entry.name in self._kconfig.syms:
 					actual: kconfiglib.Symbol = self._kconfig.syms[entry.name]
-					if actual.type == kconfiglib.BOOL:
-						if entry.value not in ['y', 'n']:
-							file.diags.append(Diagnostic.err(f'Expected "y" or "n"', entry.value_range))
-					elif actual.type == kconfiglib.HEX:
-						if not re.match(r'^0x[a-fA-F\d]+$', entry.value):
-							file.diags.append(Diagnostic.err(f'Expected hex value', entry.value_range))
-					elif actual.type == kconfiglib.INT:
-						if not re.match(r'^\d+$', entry.value):
-							file.diags.append(Diagnostic.err(f'Expected integer', entry.value_range))
+					if kconfiglib.TYPE_TO_STR[actual.type] != entry.type:
+						file.diags.append(Diagnostic.err(f'Invalid type. Expected {entry.type}', entry.full_range))
+
 
 
 	def _lint(self):
 		self._check_user_vals()
+		self._check_types()
 
 	def load_config(self):
 		self.clear_diags()
