@@ -460,11 +460,19 @@ class KconfigContext:
 					if kconfiglib.TYPE_TO_STR[actual.type] != entry.type:
 						file.diags.append(Diagnostic.err(f'Invalid type. Expected {entry.type}', entry.full_range))
 
+	def _check_visibility(self):
+		for file in self.conf_files:
+			for entry in file.entries():
+				if entry.name in self._kconfig.syms:
+					actual: kconfiglib.Symbol = self._kconfig.syms[entry.name]
+					if actual.visibility == 0:
+						file.diags.append(Diagnostic.warn(f'Symbol CONFIG_{entry.name} cannot be set (has no prompt)', entry.full_range))
 
 
 	def _lint(self):
 		self._check_user_vals()
 		self._check_types()
+		self._check_visibility()
 
 	def load_config(self):
 		self.clear_diags()
