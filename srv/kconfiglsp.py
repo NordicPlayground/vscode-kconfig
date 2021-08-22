@@ -5,7 +5,7 @@ import os
 import re
 import enum
 import argparse
-from lsp import CompletionItemKind, Diagnostic, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Uri, TextDocument, Range, handler, documentStore
+from lsp import CompletionItemKind, Diagnostic, InsertTextFormat, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Snippet, Uri, TextDocument, Range, handler, documentStore
 
 VERSION = '1.0'
 
@@ -652,11 +652,14 @@ class KconfigServer(LSPServer):
 			insert.add_text('=')
 			if sym.type in [kconfiglib.BOOL, kconfiglib.TRISTATE]:
 				choices = [kconfiglib.TRI_TO_STR[val] for val in list(sym.assignable)]
+				choices.reverse() # sym.assignable shows 'n' first, but user normally wants 'y'
 				insert.add_choice(choices)
 			elif sym.type == kconfiglib.STRING:
 				insert.add_text('"')
 				insert.add_tabstop()
 				insert.add_text('"')
+			elif sym.type == kconfiglib.HEX:
+				insert.add_text('0x')
 			else:
 				pass # freeform value
 
@@ -668,6 +671,7 @@ class KconfigServer(LSPServer):
 				'detail': kconfiglib.TYPE_TO_STR[sym.type],
 				'documentation': next((n.help.replace('\n', ' ') for n in sym.nodes if n.help), ' '),
 				'insertText': insert_text(sym),
+				'insertTextFormat': InsertTextFormat.SNIPPET
 			}
 			for sym in ctx.symbols(word) if any(node.prompt for node in sym.nodes)]
 

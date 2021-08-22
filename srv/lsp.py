@@ -589,6 +589,10 @@ class CompletionItemKind(enum.IntEnum):
 	OPERATOR = 24
 	TYPE_PARAMETER = 25
 
+class InsertTextFormat(enum.IntEnum):
+	PLAINTEXT = 1
+	SNIPPET = 2
+
 class DiagnosticRelatedInfo:
 	def __init__(self, loc, message):
 		self.loc = loc
