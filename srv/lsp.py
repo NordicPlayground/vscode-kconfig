@@ -219,14 +219,14 @@ class Uri:
 	def parse(raw: str):
 		def sanitize(part):
 			if part:
-				return re.sub(r'%(\d+)', lambda x: chr(int(x.group(1))), part)
+				return re.sub(r'%([\da-fA-F]{2})', lambda x: chr(int(x.group(1), 16)), part)
 			else:
 				return ''
 
 		if not isinstance(raw, str):
 			return NotImplemented
 
-		match = re.match(r'(.*?)://(.*?)(/[^?\s]*)(?:\?([^#]+))?(?:#(.+))?', raw)
+		match = re.match(r'(.*?):(?://([^?\s/#]*))?(/[^?\s]*)?(?:\?([^#]+))?(?:#(.+))?', raw)
 		if match:
 			return Uri(*[sanitize(p) for p in match.groups()])
 
