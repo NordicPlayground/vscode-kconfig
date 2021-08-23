@@ -921,12 +921,12 @@ class LSPServer(RPCServer):
 	def handle_open(self, params):
 		doc = params['textDocument']
 		uri = Uri.parse(doc['uri'])
-		self.docs.open(TextDocument(uri, doc['text'], doc['languageId'], doc['version']))
+		documentStore.open(TextDocument(uri, doc['text'], doc['languageId'], doc['version']))
 
 	@handler('textDocument/didChange')
 	def handle_change(self, params):
 		uri = Uri.parse(params['textDocument']['uri'])
-		doc = self.docs.get(uri)
+		doc = documentStore.get(uri)
 		if not doc:
 			return
 
@@ -942,4 +942,4 @@ class LSPServer(RPCServer):
 
 	@handler('textDocument/didClose')
 	def handle_close(self, params):
-		self.docs.close(Uri.parse(params['textDocument']['uri']))
+		documentStore.close(Uri.parse(params['textDocument']['uri']))
