@@ -258,6 +258,11 @@ class Position:
 			return NotImplemented
 		return (self.line < other.line) or (self.line == other.line and self.character < other.character)
 
+	def after(self, other):
+		if not isinstance(other, Position):
+			return NotImplemented
+		return (self.line > other.line) or (self.line == other.line and self.character > other.character)
+
 	def __eq__(self, other):
 		if not isinstance(other, Position):
             		return False
@@ -287,8 +292,17 @@ class Range:
 			b.end if a.end.before(b.end) else b.end
 		)
 
-	def contains(self, pos: Position):
-		return (not pos.before(self.start)) and (not self.end.before(pos))
+	def contains(self, pos_or_range):
+		if isinstance(pos_or_range, Position):
+			return (not pos_or_range.before(self.start)) and (not self.end.before(pos_or_range))
+		if isinstance(pos_or_range, Range):
+			return self.contains(pos_or_range.start) and self.contains(pos_or_range.end)
+		return NotImplemented
+
+	def overlaps(self, range):
+		if not isinstance(range, Range):
+			return NotImplemented
+		return not self.start.after(range.end) and not range.start.after(self.end)
 
 	def __eq__(self, other):
 		if not isinstance(other, Range):
@@ -374,7 +388,8 @@ class TextDocument:
 
 	def word_at(self, pos: Position):
 		line = self.line(pos.line)
-		return re.match(r'.*?(\w*)$', line[:pos.character])[1] + re.match(r'^\w*', line[pos.character:])[0]
+		if line:
+			return re.match(r'.*?(\w*)$', line[:pos.character])[1] + re.match(r'^\w*', line[pos.character:])[0]
 
 	def replace(self, text:str, range: Range = None):
 		if range:
@@ -598,6 +613,68 @@ class DiagnosticRelatedInfo:
 		self.loc = loc
 		self.message = message
 
+
+class TextEdit:
+	def __init__(self, range: Range, new_text: str):
+		self.range = range
+		self.newText = new_text
+
+	@staticmethod
+	def remove(range: Range):
+		return TextEdit(range, '')
+
+
+class WorkspaceEdit:
+	def __init__(self):
+		self.changes = {}
+
+	def add(self, uri: Uri, edit: TextEdit):
+		key = str(uri)
+		if not key in self.changes:
+			self.changes[key] = []
+		self.changes[key].append(edit)
+
+	def has_changes(self):
+		return len([c for c in self.changes.values() if len(c) > 0]) > 0
+
+
+class CodeActionKind(enum.Enum):
+	QUICKFIX = 'quickfix'
+	REFACTOR = 'refactor'
+	REFACTOREXTRACT = 'refactor.extract'
+	REFACTORINLINE = 'refactor.inline'
+	REFACTORREWRITE = 'refactor.rewrite'
+	SOURCE = 'source'
+	SOURCEORGANIZEIMPORTS = 'source.organizeImports'
+	SOURCEFIXALL = 'source.fixAll'
+
+
+class CodeAction:
+
+	def __init__(self, title, kind: CodeActionKind = CodeActionKind.QUICKFIX):
+		self.title = title
+		self.kind = kind
+		self.command = None
+		self.data = None
+		self.diagnostics: List[Diagnostic] = []
+		self.edit = WorkspaceEdit()
+
+	def to_dict(self):
+		result = {
+			'title': self.title,
+			'kind': self.kind.value,
+		}
+		if self.command:
+			result['command'] = self.command,
+		if self.data:
+			result['data'] = self.data
+		if len(self.diagnostics) > 0:
+			result['diagnostics'] = self.diagnostics
+		if self.edit.has_changes():
+			result['edit'] = self.edit
+		return result
+
+
 class Diagnostic:
 	ERROR = 1
 	WARNING = 2
@@ -608,12 +685,13 @@ class Diagnostic:
 		UNNECESSARY = 1
 		DEPRECATED = 2
 
-	def __init__(self, message, range, severity=WARNING):
+	def __init__(self, message, range: Range, severity=WARNING):
 		self.message = message
 		self.range = range
 		self.severity = severity
 		self.tags = []
 		self.related_info = []
+		self.actions = []
 
 	@staticmethod
 	def severity_str(severity):
@@ -635,6 +713,10 @@ class Diagnostic:
 			obj['relatedInformation'] = [info.__dict__ for info in self.related_info]
 
 		return obj
+
+	def add_action(self, action: CodeAction):
+		action.diagnostics.append(self)
+		self.actions.append(action)
 
 	@staticmethod
 	def err(message, range):

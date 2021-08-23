@@ -5,7 +5,7 @@ import os
 import re
 import enum
 import argparse
-from lsp import CompletionItemKind, Diagnostic, InsertTextFormat, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Snippet, Uri, TextDocument, Range, handler, documentStore
+from lsp import CodeAction, CodeActionKind, CompletionItemKind, Diagnostic, InsertTextFormat, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Snippet, TextEdit, Uri, TextDocument, Range, WorkspaceEdit, handler, documentStore
 
 VERSION = '1.0'
 
@@ -209,11 +209,15 @@ class KconfigMenu:
 		}
 
 class ConfEntry:
-	def __init__(self, name: str, range: Range, assignment: str, value_range: Range):
+	def __init__(self, name: str, loc: Location, assignment: str, value_range: Range):
 		self.name = name
-		self.range = range
+		self.loc = loc
 		self.raw = assignment.strip()
 		self.value_range = value_range
+
+	@property
+	def range(self):
+		return self.loc.range
 
 	@property
 	def full_range(self):
@@ -236,7 +240,7 @@ class ConfEntry:
 		if self.is_string():
 			return self.raw[1:-1] # strip out quotes
 		if self.is_bool():
-			return self.raw == 'y'
+			return self.raw
 		if self.is_hex():
 			return int(self.raw, 16)
 		if self.is_int():
@@ -254,6 +258,19 @@ class ConfEntry:
 			return kconfiglib.TYPE_TO_STR[kconfiglib.BOOL]
 
 		return kconfiglib.TYPE_TO_STR[kconfiglib.UNKNOWN]
+
+	@property
+	def line_range(self):
+		"""Entire line range."""
+		return Range(
+			Position(self.range.start.line, 0), Position(self.range.start.line + 1, 0))
+
+	def remove(self, title='Remove entry') -> CodeAction:
+		"""Create a code action that will remove this entry"""
+		action = CodeAction(title)
+		action.edit.add(self.loc.uri, TextEdit.remove(self.line_range))
+		return action
+
 
 class ConfFile:
 	def __init__(self, uri: Uri):
@@ -273,7 +290,7 @@ class ConfFile:
 					Position(linenr, match.start(1)), Position(linenr, match.end(1)))
 				value_range = Range(
 					Position(linenr, match.start(3)), Position(linenr, match.end(3)))
-				entries.append(ConfEntry(match[2], range, match[3], value_range))
+				entries.append(ConfEntry(match[2], Location(self.uri, range), match[3], value_range))
 		return entries
 
 	def find(self, name) -> List[ConfEntry]:
@@ -426,53 +443,110 @@ class KconfigContext:
 	def symbol_search(self, query):
 		return map(_symbolitem, self.symbols(query))
 
-	def _check_user_vals(self):
-		for sym in self._kconfig.syms.values():
-			if sym.user_value is None:
-				continue
+	def check_type(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+		if kconfiglib.TYPE_TO_STR[sym.type] != entry.type:
+			diag = Diagnostic.err(
+				f'Invalid type. Expected {kconfiglib.TYPE_TO_STR[sym.type]}', entry.full_range)
 
-			user_val = sym.user_value
-			if sym.type in (kconfiglib.BOOL, kconfiglib.TRISTATE):
-				user_val = kconfiglib.TRI_TO_STR[user_val]
+			# Add action to convert between hex and int:
+			if sym.type in [kconfiglib.HEX, kconfiglib.INT] and (entry.is_hex() or entry.is_int()):
+				action = CodeAction(
+					'Convert value to ' + str(kconfiglib.TYPE_TO_STR[sym.type]))
+				if sym.type == kconfiglib.HEX:
+					action.edit.add(entry.loc.uri, TextEdit(
+						entry.value_range, hex(entry.value)))
+				else:
+					action.edit.add(entry.loc.uri, TextEdit(
+						entry.value_range, str(entry.value)))
+				diag.add_action(action)
 
-			if user_val == sym.str_value:
-				continue
+			file.diags.append(diag)
+			return True
+
+	def check_assignment(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+		user_value = sym.user_value
+		if sym.type in [kconfiglib.BOOL, kconfiglib.TRISTATE]:
+			user_value = kconfiglib.TRI_TO_STR[user_value]
+
+		if user_value != sym.str_value:
+			actions = []
 
 			if len(sym.str_value):
-				warn = f'CONFIG_{sym.name} was assigned the value {user_val}, but got the value {sym.str_value}.'
+				warn = f'CONFIG_{sym.name} was assigned the value {entry.raw}, but got the value {sym.str_value}.'
 			else:
 				warn = f'CONFIG_{sym.name} couldn\'t be set.'
-			deps = [kconfiglib.expr_str(dep) for dep in _missing_deps(sym)]
+
+			deps = _missing_deps(sym)
 			if deps:
 				warn += ' Missing dependencies:\n'
-				warn += ' && '.join(deps)
+				warn += ' && '.join([kconfiglib.expr_str(dep) for dep in deps])
+				edits = []
 
-			for file in self.conf_files:
-				entries = file.find(sym.name)
-				for entry in entries:
-					file.diags.append(Diagnostic(warn, entry.range))
+				for dep in deps:
+					if isinstance(dep, kconfiglib.Symbol) and dep.type == kconfiglib.BOOL:
+						dep_entry = next((entry for entry in file.entries() if entry.name == dep.name), None)
+						if dep_entry:
+							edits.append({'dep': dep.name, 'edit': TextEdit(dep_entry.value_range, 'y')})
+						else:
+							edits.append({'dep': dep.name, 'edit': TextEdit(Range(entry.line_range.start, entry.line_range.start), f'CONFIG_{dep.name}=y\n')})
 
-	def _check_types(self):
+				if len(edits) == 1:
+					action = CodeAction(f'Enable CONFIG_{edits[0]["dep"]} to resolve dependency')
+					action.edit.add(file.uri, edits[0]['edit'])
+					actions.append(action)
+				elif len(edits) > 1:
+					action = CodeAction(f'Enable {len(edits)} entries to resolve dependencies')
+
+					# Dependencies are registered with a "nearest first" approach in kconfiglib.
+					# As the nearest dependency is likely lowest in the menu hierarchy, we'll
+					# reverse the list of edits, so the highest dependency is inserted first:
+					edits.reverse()
+
+					for edit in edits:
+						action.edit.add(file.uri, edit['edit'])
+					actions.append(action)
+
+			actions.append(entry.remove())
+
+			diag = Diagnostic.warn(warn, entry.range)
+			for action in actions:
+				diag.add_action(action)
+
+			file.diags.append(diag)
+			return True
+
+	def check_visibility(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+		if sym.visibility == 0:
+			diag = Diagnostic.warn(f'Symbol CONFIG_{entry.name} cannot be set (has no prompt)', entry.full_range)
+			diag.add_action(entry.remove())
+			file.diags.append(diag)
+			return True
+
+	def check_defaults(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+		if sym._str_default() == sym.user_value:
+			diag = Diagnostic.hint(f'Value is {entry.raw} by default', entry.full_range)
+			diag.tags = [Diagnostic.Tag.UNNECESSARY]
+			diag.add_action(entry.remove('Remove redundant entry'))
+			file.diags.append(diag)
+			return True
+
+	def lint(self):
 		for file in self.conf_files:
-			for entry in file.entries():
-				if entry.name in self._kconfig.syms:
-					actual: kconfiglib.Symbol = self._kconfig.syms[entry.name]
-					if kconfiglib.TYPE_TO_STR[actual.type] != entry.type:
-						file.diags.append(Diagnostic.err(f'Invalid type. Expected {entry.type}', entry.full_range))
+			entries = file.entries()
+			for entry in entries:
+				if not entry.name in self._kconfig.syms:
+					continue
 
-	def _check_visibility(self):
-		for file in self.conf_files:
-			for entry in file.entries():
-				if entry.name in self._kconfig.syms:
-					actual: kconfiglib.Symbol = self._kconfig.syms[entry.name]
-					if actual.visibility == 0:
-						file.diags.append(Diagnostic.warn(f'Symbol CONFIG_{entry.name} cannot be set (has no prompt)', entry.full_range))
+				sym: kconfiglib.Symbol = self._kconfig.syms[entry.name]
 
-
-	def _lint(self):
-		self._check_user_vals()
-		self._check_types()
-		self._check_visibility()
+				if self.check_type(file, entry, sym):
+					continue
+				if self.check_assignment(file, entry, sym):
+					continue
+				if self.check_visibility(file, entry, sym):
+					continue
+				if self.check_defaults(file, entry, sym):
+					continue
 
 	def load_config(self):
 		self.clear_diags()
@@ -482,7 +556,7 @@ class KconfigContext:
 		for file in self.conf_files:
 			self._kconfig.load_config(file.doc.uri.path, replace=False)
 
-		self._lint()
+		self.lint()
 
 		for filename, diags in self._kconfig.diags.items():
 			if filename == '':
@@ -709,6 +783,27 @@ class KconfigServer(LSPServer):
 			contents.add_text(help)
 
 		return {'contents': contents}
+
+	@handler('textDocument/codeAction')
+	def handle_code_action(self, params):
+		uri = Uri.parse(params['textDocument']['uri'])
+		ctx = self.best_ctx(uri)
+		if not ctx:
+			self.dbg('No context for {}'.format(uri.path))
+			return
+
+		conf = ctx.conf_file(uri)
+		if not conf:
+			self.dbg('No conf file for {}'.format(uri.path))
+			return
+
+		range: Range = Range.create(params['range'])
+		actions = []
+		for diag in conf.diags:
+			if range.overlaps(diag.range):
+				actions.extend(diag.actions)
+
+		return actions
 
 def wait_for_debugger():
 	import debugpy
