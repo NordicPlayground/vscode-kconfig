@@ -365,7 +365,7 @@ class TextDocument:
 
 	@property
 	def text(self):
-		return '\n'.join(self.lines)
+		return '\n'.join(self.lines) + '\n'
 
 	def line(self, index):
 		if index < len(self.lines):
