@@ -559,7 +559,15 @@ class DocumentStore:
 	def get(self, uri: Uri):
 		if uri.scheme in self._providers:
 			return self._providers[uri.scheme].get(uri)
-		return self.docs.get(str(uri))
+
+		if str(uri) in self.docs:
+			return self.docs[str(uri)]
+
+		try:
+			return self._from_disk(uri)
+		except EnvironmentError as e:
+			# File doesn't exist
+			return None
 
 	def _from_disk(self, uri: Uri):
 		with open(uri.path, 'r') as f: # will raise environment error if the file doesn't exist. This has to be caught outside
