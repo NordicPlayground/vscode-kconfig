@@ -154,6 +154,9 @@ def _filter_match(filter: str, name: str):
 
 
 def _missing_deps(sym):
+	"""
+	Get a list of the dependency expressions that fail for a symbol
+	"""
 	deps = kconfiglib.split_expr(sym.direct_dep, kconfiglib.AND)
 
 	if sym.type in (kconfiglib.BOOL, kconfiglib.TRISTATE):
@@ -209,6 +212,9 @@ class KconfigMenu:
 		}
 
 class ConfEntry:
+	"""
+	Single configuration entry in a prj.conf file, like CONFIG_ABC=y
+	"""
 	def __init__(self, name: str, loc: Location, assignment: str, value_range: Range):
 		self.name = name
 		self.loc = loc
@@ -248,6 +254,7 @@ class ConfEntry:
 
 	@property
 	def type(self):
+		"""Human readable entry type, derived from the assigned value."""
 		if self.is_string():
 			return kconfiglib.TYPE_TO_STR[kconfiglib.STRING]
 		if self.is_hex():
