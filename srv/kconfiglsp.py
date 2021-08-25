@@ -38,12 +38,21 @@ KCONFIG_WARN_LVL=Diagnostic.WARNING
 ID_SEP = '@'
 
 class KconfigErrorCode(enum.IntEnum):
-	UNKNOWN_NODE = 1
-	DESYNC = 2
-	PARSING_FAILED = 3
+	"""Set of Kconfig specific error codes reported in response to failing requests"""
+	UNKNOWN_NODE = 1 # The specified node is unknown.
+	DESYNC = 2 # The kconfig data has been changed, and the menu tree is out of sync.
+	PARSING_FAILED = 3 # Kconfig tree couldn't be parsed.
 
 class Kconfig(kconfiglib.Kconfig):
 	def __init__(self, filename='Kconfig'):
+		"""
+		Wrapper of kconfiglib's Kconfig object.
+
+		Overrides the diagnostics mechanism to keep track of them in a dict instead
+		of writing them to stdout.
+
+		Overrides the _open function to inject live editor data from the documentStore.
+		"""
 		self.diags: Dict[str, List[Diagnostic]] = {}
 		super().__init__(filename, True, False)
 		self.warn_assign_undef = True
@@ -74,15 +83,25 @@ class Kconfig(kconfiglib.Kconfig):
 
 
 def _prompt(sym: kconfiglib.Symbol):
+	"""
+	Get the most accessible prompt for a given kconfig Symbol.
+
+	Each symbol may have multiple prompts (as it may be defined in several kconfig files).
+	Pick the first valid prompt.
+
+	This'll only consider prompts whose if expressions are true.
+	"""
 	for node in sym.nodes:
 		if node.prompt and kconfiglib.expr_value(node.prompt[1]):
 			return node.prompt[0]
 
 def _visible(node):
-    return node.prompt and kconfiglib.expr_value(node.prompt[1]) and not \
-        (node.item == kconfiglib.MENU and not kconfiglib.expr_value(node.visibility))
+	"""Check whether a node is visible."""
+	return node.prompt and kconfiglib.expr_value(node.prompt[1]) and not \
+	    (node.item == kconfiglib.MENU and not kconfiglib.expr_value(node.visibility))
 
 def _children(node):
+	"""Get the child nodes of a given MenuNode"""
 	children = []
 	node = node.list
 	while node:
@@ -94,7 +113,7 @@ def _children(node):
 	return children
 
 def _suboption_depth(node):
-	"""In menuconfig, ndoes that aren't children of menuconfigs are rendered
+	"""In menuconfig, nodes that aren't children of menuconfigs are rendered
 	   in the same menu, but indented. Get the depth of this indentation.
 	"""
 	parent = node.parent
@@ -105,6 +124,7 @@ def _suboption_depth(node):
 	return depth
 
 def _val(sym: kconfiglib.Symbol):
+	"""Get the native python value of the given symbol."""
 	if sym.orig_type == kconfiglib.STRING:
 		return sym.str_value
 	if sym.orig_type in (kconfiglib.INT, kconfiglib.HEX):
@@ -128,13 +148,8 @@ def _path(node):
 	return [0]
 
 def _loc(sym: kconfiglib.Symbol):
+	"""Get a list of locations where the given kconfig symbol is defined"""
 	return [Location(Uri.file(os.path.join(n.kconfig.srctree, n.filename)), Position(n.linenr-1, 0).range) for n in sym.nodes]
-
-def _next(node, count=1):
-	while count > 0 and node:
-		node = node.next
-		count -= 1
-	return node
 
 def _symbolitem(sym: kconfiglib.Symbol):
 	item = {
@@ -150,6 +165,7 @@ def _symbolitem(sym: kconfiglib.Symbol):
 	return item
 
 def _filter_match(filter: str, name: str):
+	"""Filter match function used for narrowing lists in searches and autocompletions"""
 	return name.startswith(filter) # TODO: implement fuzzy match?
 
 
@@ -167,6 +183,9 @@ def _missing_deps(sym):
 
 class KconfigMenu:
 	def __init__(self, ctx, node: kconfiglib.MenuNode, id):
+		"""
+		A single level in a Menuconfig menu.
+		"""
 		self.ctx = ctx
 		self.node = node
 		self.id = id
@@ -202,6 +221,7 @@ class KconfigMenu:
 
 	@property
 	def items(self):
+		"""The list of MenuItems this menu presents."""
 		return [self._menuitem(node) for node in _children(self.node)]
 
 	def to_dict(self):
@@ -212,10 +232,10 @@ class KconfigMenu:
 		}
 
 class ConfEntry:
-	"""
-	Single configuration entry in a prj.conf file, like CONFIG_ABC=y
-	"""
 	def __init__(self, name: str, loc: Location, assignment: str, value_range: Range):
+		"""
+		Single configuration entry in a prj.conf file, like CONFIG_ABC=y
+		"""
 		self.name = name
 		self.loc = loc
 		self.raw = assignment.strip()
@@ -223,10 +243,12 @@ class ConfEntry:
 
 	@property
 	def range(self):
+		"""Range of the name text, ie CONFIG_ABC"""
 		return self.loc.range
 
 	@property
 	def full_range(self):
+		"""Range of the entire assignment, ie CONFIG_ABC=y"""
 		return Range(self.range.start, self.value_range.end)
 
 	def is_string(self):
@@ -243,6 +265,7 @@ class ConfEntry:
 
 	@property
 	def value(self):
+		"""Value assigned in the entry, as seen by kconfiglib"""
 		if self.is_string():
 			return self.raw[1:-1] # strip out quotes
 		if self.is_bool():
@@ -281,14 +304,22 @@ class ConfEntry:
 
 class ConfFile:
 	def __init__(self, uri: Uri):
+		"""
+		Single .conf file.
+
+		Each Kconfig context may contain a list of conf files that must be parsed.
+		The .conf file does not parse or understand the entry names and their interpreted value.
+		"""
 		self.uri = uri
 		self.diags: List[Diagnostic] = []
 
 	@property
 	def doc(self) -> TextDocument:
+		"""The TextDocument this file represents"""
 		return documentStore.get(self.uri)
 
 	def entries(self) -> List[ConfEntry]:
+		"""The ConfEntries in this file"""
 		entries = []
 		for linenr, line in enumerate(self.doc.lines):
 			match = re.match(r'^\s*(CONFIG_(\w+))\s*\=("[^"]+"|\w+)', line)
@@ -301,27 +332,29 @@ class ConfFile:
 		return entries
 
 	def find(self, name) -> List[ConfEntry]:
+		"""Find all ConfEntries that configure a symbol with the given name."""
 		return [entry for entry in self.entries() if entry.name == name]
 
 
 class BoardConf:
 	def __init__(self, name, arch, dir):
+		"""Board configuration object, representing a single Zephyr board"""
 		self.name = name
 		self.arch = arch
 		self.dir = dir
 
 	@property
 	def conf_file(self):
+		"""Get the path of the conf file that must be included when building with this board"""
 		return os.path.join(self.dir, self.name + '_defconfig')
 
 
 class KconfigContext:
-	"""A single instance of a kconfig compilation.
-	   Represents one configuration of one application, equalling a single
-	   build in Zephyr.
-	"""
-
 	def __init__(self, root, conf_files: List[ConfFile]=[], env={}, id=0):
+		"""A single instance of a kconfig compilation.
+		Represents one configuration of one application, equalling a single
+		build in Zephyr.
+		"""
 		self.env = env
 		self.conf_files = conf_files
 		self.id = id
@@ -331,14 +364,16 @@ class KconfigContext:
 		self._kconfig: Optional[Kconfig] = None
 		self.menu = None
 		self.cmd_diags: List[Diagnostic] = []
-		# for file in conf_files:
-		# 	file.doc.on_change(lambda _: self.load_config())
-
-	@property
-	def build_dir(self):
-		return f'build_kconfig_{self.id}'
 
 	def parse(self):
+		"""
+		Parse the full kconfig tree.
+		Will set up the environment and invoke kconfiglib to parse the entire kconfig
+		file tree. This is only necessary to do once - or if any files in the Kconfig
+		file tree changes.
+
+		Throws kconfig errors if the tree can't be parsed.
+		"""
 		self.menu = None
 		self.modified = {}
 		self.clear_diags()
@@ -353,9 +388,11 @@ class KconfigContext:
 		self.version += 1
 
 	def has_file(self, uri):
+		"""Check whether the given URI represents a conf file this context uses. Does not check board files."""
 		return any([(file.doc.uri == uri) for file in self.conf_files])
 
 	def _node_id(self, node: kconfiglib.MenuNode):
+		"""Encode a unique ID string for the given menu node"""
 		if not self._kconfig:
 			return ''
 
@@ -377,6 +414,7 @@ class KconfigContext:
 		return ID_SEP.join(parts)
 
 	def find_node(self, id):
+		"""Find a menu node based on a node ID"""
 		[version, type, *parts] = id.split(ID_SEP)
 
 		if int(version) != self.version:
@@ -400,6 +438,7 @@ class KconfigContext:
 			return self._kconfig.top_node
 
 	def get_menu(self, id=None):
+		"""Get the KconfigMenu for the menu node with the given ID"""
 		if not id:
 			if not self.menu:
 				return
@@ -411,6 +450,7 @@ class KconfigContext:
 		return KconfigMenu(node, id)
 
 	def set(self, name, val):
+		"""Set a config value (without changing the conf files)"""
 		sym = self.get(name)
 		if not sym:
 			raise RPCError(KconfigErrorCode.UNKNOWN_NODE, 'Unknown symbol {}'.format(name))
@@ -419,23 +459,28 @@ class KconfigContext:
 			self.modified.append(name)
 
 	def unset(self, name):
+		"""Revert a previous self.set() call."""
 		sym = self.get(name)
 		if sym:
 			sym.unset_value()
 
 	def get(self, name) -> kconfiglib.Symbol:
+		"""Get a kconfig symbol based on its name. The name should NOT include the CONFIG_ prefix."""
 		if self._kconfig:
 			return self._kconfig.syms.get(name)
 
 	def conf_file(self, uri):
+		"""Get the config file with the given URI, if any."""
 		return next((file for file in self.conf_files if file.doc.uri == uri), None)
 
 	def diags(self, uri):
+		"""Get the diagnostics for the conf file with the given URI"""
 		conf = self.conf_file(uri)
 		if conf:
 			return conf.diags
 
 	def clear_diags(self):
+		"""Clear all diagnostics"""
 		if self._kconfig:
 			self._kconfig.diags.clear()
 		self.cmd_diags.clear()
@@ -443,14 +488,19 @@ class KconfigContext:
 			conf.diags.clear()
 
 	def symbols(self, filter):
+		"""Get a list of symbols matching the given filter string. Can be used for search or auto completion."""
 		if filter and filter.startswith('CONFIG_'):
 			filter = filter[len('CONFIG_'):]
 		return [sym for sym in self._kconfig.syms.values() if not filter or _filter_match(filter, sym.name)]
 
 	def symbol_search(self, query):
+		"""Search for a symbol with a specific name. Returns a list of symbols as SymbolItems."""
 		return map(_symbolitem, self.symbols(query))
 
+	# Link checks for config file entries:
+
 	def check_type(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+		"""Check that the configured value has the right type."""
 		if kconfiglib.TYPE_TO_STR[sym.type] != entry.type:
 			diag = Diagnostic.err(
 				f'Invalid type. Expected {kconfiglib.TYPE_TO_STR[sym.type]}', entry.full_range)
@@ -471,6 +521,7 @@ class KconfigContext:
 			return True
 
 	def check_assignment(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+		"""Check that the assigned value actually was propagated."""
 		user_value = sym.user_value
 		if sym.type in [kconfiglib.BOOL, kconfiglib.TRISTATE]:
 			user_value = kconfiglib.TRI_TO_STR[user_value]
@@ -523,6 +574,7 @@ class KconfigContext:
 			return True
 
 	def check_visibility(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+		"""Check whether the configuration entry actually can be set in config files."""
 		if sym.visibility == 0:
 			diag = Diagnostic.warn(f'Symbol CONFIG_{entry.name} cannot be set (has no prompt)', entry.full_range)
 			diag.add_action(entry.remove())
@@ -530,6 +582,7 @@ class KconfigContext:
 			return True
 
 	def check_defaults(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+		"""Check whether an entry's value matches the default value, and mark it as redundant"""
 		if sym._str_default() == sym.user_value:
 			diag = Diagnostic.hint(f'Value is {entry.raw} by default', entry.full_range)
 			diag.tags = [Diagnostic.Tag.UNNECESSARY]
@@ -538,6 +591,14 @@ class KconfigContext:
 			return True
 
 	def lint(self):
+		"""
+		Run a set of checks on the contents of the conf files.
+
+		Adds diagnostics to the failing entries to help developers fix errors
+		that will come up when compiling. Reimplements some checks from
+		generate_config.py that show up during the build, as these aren't
+		part of kconfiglib.
+		"""
 		for file in self.conf_files:
 			entries = file.entries()
 			for entry in entries:
@@ -556,6 +617,7 @@ class KconfigContext:
 					continue
 
 	def load_config(self):
+		"""Load configuration files and update the diagnostics"""
 		self.clear_diags()
 
 		self._kconfig.load_config(self.board.conf_file, replace=True)
@@ -577,6 +639,7 @@ class KconfigContext:
 					self.cmd_diags.extend(diags)
 
 	def symbol_at(self, uri, pos):
+		"""Get the symbol referenced at a given position in a conf file."""
 		doc = documentStore.get(uri)
 		if not doc:
 			return
@@ -586,7 +649,19 @@ class KconfigContext:
 			return self.get(word[len('CONFIG_'):])
 
 class KconfigServer(LSPServer):
+
 	def __init__(self, istream=None, ostream=None):
+		"""
+		The Kconfig LSP Server.
+
+		The LSP Server should be instantiated once for each IDE instance, and is capable of
+		handling multiple different Kconfig contexts using create_ctx().
+
+		To run a kconfig server, instantiate it and call loop():
+		KconfigServer().loop()
+
+		This will keep running until KconfigServer.running is false.
+		"""
 		super().__init__('zephyr-kconfig', VERSION, istream, ostream)
 		self._next_id = 0
 		self.last_ctx = None
@@ -594,12 +669,18 @@ class KconfigServer(LSPServer):
 		self.dbg('Python version: ' + sys.version)
 
 	def publish_diags(self, uri, diags):
+		"""Send a diagnostics publication notification"""
 		self.send(RPCNotification('textDocument/publishDiagnostics', {
 			'uri': uri,
 			'diagnostics': diags,
 		}))
 
 	def create_ctx(self, root, conf_files, env):
+		"""
+		Create a Kconfig Context with the given parameters.
+
+		A context represents a single build directory.
+		"""
 		self.dbg('Creating context...')
 		id = self._next_id
 		ctx = KconfigContext(root, conf_files, env, id)
@@ -626,6 +707,12 @@ class KconfigServer(LSPServer):
 		return ctx
 
 	def best_ctx(self, uri):
+		"""
+		Get the context that is the most likely owner of the given URI.
+
+		Keeps track of the currently referenced context, and will prefer
+		this if it owns the given URI.
+		"""
 		if self.last_ctx and self.last_ctx.has_file(uri):
 			return self.last_ctx
 
@@ -635,6 +722,12 @@ class KconfigServer(LSPServer):
 		return ctx
 
 	def get_sym(self, params):
+		"""
+		Get the symbol located at the given Location.
+		Interprets location from a common location parameter format:
+		- textDocument.uri -> URI
+		- position -> Position
+		"""
 		uri = Uri.parse(params['textDocument']['uri'])
 		ctx = self.best_ctx(uri)
 		if not ctx:
@@ -685,6 +778,7 @@ class KconfigServer(LSPServer):
 		# - Reparse the active configuration
 		# - Mark other configurations as dirty
 		# - Rerun last_ctx.load_config()?
+		# - Also need to check which conf files were actually changed
 
 	@handler('kconfig/setMenu')
 	def handle_set_menu(self, params):
