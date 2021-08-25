@@ -929,7 +929,10 @@ class LSPServer(RPCServer):
 	def handle_open(self, params):
 		doc = params['textDocument']
 		uri = Uri.parse(doc['uri'])
-		documentStore.open(TextDocument(uri, doc['text'], doc['languageId'], doc['version']))
+		if uri:
+			documentStore.open(TextDocument(uri, doc['text'], doc['languageId'], doc['version']))
+		else:
+			self.dbg(f'Invalid URI: {doc["uri"]}')
 
 	@handler('textDocument/didChange')
 	def handle_change(self, params):
