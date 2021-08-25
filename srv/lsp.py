@@ -556,7 +556,7 @@ class DocumentStore:
 	def provider(self, provider):
 		self._providers[provider.uri.scheme] = provider
 
-	def get(self, uri: Uri):
+	def get(self, uri: Uri, create=True):
 		if uri.scheme in self._providers:
 			return self._providers[uri.scheme].get(uri)
 
@@ -564,7 +564,8 @@ class DocumentStore:
 			return self.docs[str(uri)]
 
 		try:
-			return self._from_disk(uri)
+			if create:
+				return self._from_disk(uri)
 		except EnvironmentError as e:
 			# File doesn't exist
 			return None

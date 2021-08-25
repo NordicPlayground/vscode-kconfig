@@ -61,7 +61,8 @@ class Kconfig(kconfiglib.Kconfig):
 
 	# Overriding _open to work on virtual file storage when required:
 	def _open(self, filename, mode):
-		doc = documentStore.get(Uri.file(filename))
+		# Read from document store, but don't create an entry if it doesn't exist:
+		doc = documentStore.get(Uri.file(filename), create=False)
 		if doc:
 			doc.open(mode)
 			return doc
