@@ -754,7 +754,7 @@ class KconfigServer(LSPServer):
 				'insertText': insert_text(sym),
 				'insertTextFormat': InsertTextFormat.SNIPPET
 			}
-			for sym in ctx.symbols(word) if any(node.prompt for node in sym.nodes)]
+			for sym in ctx.symbols(word) if sym.visibility or word]
 
 		self.dbg('Filter: "{}" Total symbols: {} Results: {}'.format(word, len(ctx._kconfig.syms.items()), len(items)))
 		return items
