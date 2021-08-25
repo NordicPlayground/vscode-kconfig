@@ -561,7 +561,7 @@ class KconfigContext:
 		self._kconfig.load_config(self.board.conf_file, replace=True)
 
 		for file in self.conf_files:
-			self._kconfig.load_config(file.doc.uri.path, replace=False)
+			self._kconfig.load_config(file.uri.path, replace=False)
 
 		self.lint()
 
