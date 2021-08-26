@@ -381,6 +381,20 @@ class KconfigContext:
 		self.cmd_diags: List[Diagnostic] = []
 		self.kconfig_diags: Dict[str, List[Diagnostic]] = {}
 
+	def initialize_env(self):
+		"""
+		Apply the context environment for the entire process.
+
+		kconfiglib will access os.environ without a wrapper to
+		resolve variables like ZEPHYR_BASE.
+		"""
+		for key, value in self.env.items():
+			os.environ[key] = value
+
+		functions_path = os.path.join(self.env['ZEPHYR_BASE'], 'scripts', 'kconfig')
+		if not functions_path in sys.path:
+			sys.path.append(functions_path)
+
 	def parse(self):
 		"""
 		Parse the full kconfig tree.
@@ -393,20 +407,10 @@ class KconfigContext:
 		self.menu = None
 		self.modified = {}
 		self.clear_diags()
-		for key, value in self.env.items():
-			os.environ[key] = value
-
-		functions_path = os.path.join(self.env['ZEPHYR_BASE'], 'scripts', 'kconfig')
-		if not functions_path in sys.path:
-			sys.path.append(functions_path)
-
-		# Clear Kconfig diags before creating new ones:
-		for uri in self.kconfig_diags.keys():
-			# Empty the arrays, but don't delete the keys. The LSP client will not flush the diags
-			# of these files unless we report an empty list of diags for that file on the next run.
-			self.kconfig_diags[uri] = []
+		self.initialize_env()
 
 		self._kconfig = Kconfig(self._root)
+
 		try:
 			self._kconfig.parse()
 		except kconfiglib.KconfigError as e:
@@ -532,6 +536,7 @@ class KconfigContext:
 		"""Clear all diagnostics"""
 		if self._kconfig:
 			self._kconfig.diags.clear()
+		self.kconfig_diags.clear()
 		self.cmd_diags.clear()
 		for conf in self.conf_files:
 			conf.diags.clear()
