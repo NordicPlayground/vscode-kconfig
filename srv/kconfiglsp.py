@@ -1,11 +1,11 @@
-from typing import Union, Optional, List, Dict
+from typing import Optional, List, Dict
 import kconfiglib
 import sys
 import os
 import re
 import enum
 import argparse
-from lsp import CodeAction, CodeActionKind, CompletionItemKind, Diagnostic, InsertTextFormat, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Snippet, TextEdit, Uri, TextDocument, Range, WorkspaceEdit, handler, documentStore
+from lsp import CodeAction, CompletionItemKind, Diagnostic, InsertTextFormat, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Snippet, TextEdit, Uri, TextDocument, Range, handler, documentStore
 
 VERSION = '1.0'
 
@@ -54,10 +54,24 @@ class Kconfig(kconfiglib.Kconfig):
 		Overrides the _open function to inject live editor data from the documentStore.
 		"""
 		self.diags: Dict[str, List[Diagnostic]] = {}
-		super().__init__(filename, True, False)
 		self.warn_assign_undef = True
 		self.warn_assign_override = True
 		self.warn_assign_redun = True
+		self.filename = filename
+		self.valid = False
+
+	def parse(self):
+		"""
+		Parse the kconfig tree.
+
+		This is split out from the constructor to avoid nixing the whole object on parsing errors.
+		"""
+		self._init(self.filename, True, False, 'utf-8')
+		self.valid = True
+
+	def loc(self):
+		if self.filename and self.linenr != None:
+			return Location(Uri.file(os.path.join(self.srctree, self.filename)), Range(Position(self.linenr - 1, 0), Position(self.linenr - 1, 99999)))
 
 	# Overriding _open to work on virtual file storage when required:
 	def _open(self, filename, mode):
@@ -365,6 +379,7 @@ class KconfigContext:
 		self._kconfig: Optional[Kconfig] = None
 		self.menu = None
 		self.cmd_diags: List[Diagnostic] = []
+		self.kconfig_diags: Dict[str, List[Diagnostic]] = {}
 
 	def parse(self):
 		"""
@@ -385,8 +400,41 @@ class KconfigContext:
 		if not functions_path in sys.path:
 			sys.path.append(functions_path)
 
+		# Clear Kconfig diags before creating new ones:
+		for uri in self.kconfig_diags.keys():
+			# Empty the arrays, but don't delete the keys. The LSP client will not flush the diags
+			# of these files unless we report an empty list of diags for that file on the next run.
+			self.kconfig_diags[uri] = []
+
 		self._kconfig = Kconfig(self._root)
+		try:
+			self._kconfig.parse()
+		except kconfiglib.KconfigError as e:
+			loc = self._kconfig.loc()
+
+			# Strip out the GCC-style location indicator that is placed on the start of the
+			# error message for some messages:
+			match = re.match(r'(^[\w\/\\-]+:\d+:\s*)?(error:)?\s*(.*)', str(e))
+			if match:
+				msg = match[3]
+			else:
+				msg = str(e)
+
+			if loc:
+				self.kconfig_diag(loc.uri, Diagnostic.err(msg, loc.range))
+			else:
+				self.kconfig_diag(Uri.file(
+					'command-line'), Diagnostic.err(msg, Range(Position(0, 0), Position(0, 0))))
 		self.version += 1
+
+	def kconfig_diag(self, uri: Uri, diag: Diagnostic):
+		if not str(uri) in self.kconfig_diags:
+			self.kconfig_diags[str(uri)] = []
+		self.kconfig_diags[str(uri)].append(diag)
+
+	@property
+	def valid(self):
+		return self._kconfig and self._kconfig.valid
 
 	def has_file(self, uri):
 		"""Check whether the given URI represents a conf file this context uses. Does not check board files."""
@@ -621,6 +669,9 @@ class KconfigContext:
 		"""Load configuration files and update the diagnostics"""
 		self.clear_diags()
 
+		if not self.valid:
+			pass
+
 		self._kconfig.load_config(self.board.conf_file, replace=True)
 
 		for file in self.conf_files:
@@ -669,7 +720,7 @@ class KconfigServer(LSPServer):
 		self.ctx: Dict[int, KconfigContext] = {}
 		self.dbg('Python version: ' + sys.version)
 
-	def publish_diags(self, uri, diags):
+	def publish_diags(self, uri, diags: List[Diagnostic]):
 		"""Send a diagnostics publication notification"""
 		self.send(RPCNotification('textDocument/publishDiagnostics', {
 			'uri': uri,
@@ -686,11 +737,10 @@ class KconfigServer(LSPServer):
 		id = self._next_id
 		ctx = KconfigContext(root, conf_files, env, id)
 		self.dbg('Parsing...')
-		try:
-			ctx.parse()
-		except kconfiglib.KconfigError as e:
-			self.dbg('Parsing failed: ' + str(e))
-			raise RPCError(KconfigErrorCode.PARSING_FAILED, str(e))
+		ctx.parse()
+		if not ctx.valid:
+			for uri, diags in ctx.kconfig_diags.items():
+				self.publish_diags(uri, diags)
 
 		self.dbg('Load config...')
 		try:
