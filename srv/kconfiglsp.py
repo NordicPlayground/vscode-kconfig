@@ -446,7 +446,7 @@ class KconfigContext:
 
 	def has_file(self, uri):
 		"""Check whether the given URI represents a conf file this context uses. Does not check board files."""
-		return any([(file.doc.uri == uri) for file in self.conf_files])
+		return any([(file.doc.uri == uri) for file in self.conf_files]) or self.board.conf_file == uri.path
 
 	def _node_id(self, node: kconfiglib.MenuNode):
 		"""Encode a unique ID string for the given menu node"""
