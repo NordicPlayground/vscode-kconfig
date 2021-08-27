@@ -772,7 +772,7 @@ class KconfigServer(LSPServer):
 		self.last_ctx = ctx
 		return ctx
 
-	def best_ctx(self, uri):
+	def best_ctx(self, uri: Uri):
 		"""
 		Get the context that is the most likely owner of the given URI.
 
@@ -782,7 +782,7 @@ class KconfigServer(LSPServer):
 		if self.last_ctx and self.last_ctx.has_file(uri):
 			return self.last_ctx
 
-		ctx = next((ctx for ctx in self.ctx.items() if ctx.has_file(uri)), None)
+		ctx = next((ctx for ctx in self.ctx.values() if ctx.has_file(uri)), None)
 		if ctx:
 			self.last_ctx = ctx
 		return ctx
