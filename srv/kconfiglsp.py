@@ -5,7 +5,7 @@ import os
 import re
 import enum
 import argparse
-from lsp import CodeAction, CompletionItemKind, Diagnostic, InsertTextFormat, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Snippet, TextEdit, Uri, TextDocument, Range, handler, documentStore
+from lsp import CodeAction, CompletionItemKind, Diagnostic, FileChangeKind, InsertTextFormat, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Snippet, TextEdit, Uri, TextDocument, Range, handler, documentStore
 
 VERSION = '1.0'
 
@@ -440,6 +440,10 @@ class KconfigContext:
 	def valid(self):
 		return self._kconfig and self._kconfig.valid
 
+	def invalidate(self):
+		if self._kconfig:
+			self._kconfig.valid = False
+
 	def has_file(self, uri):
 		"""Check whether the given URI represents a conf file this context uses. Does not check board files."""
 		return any([(file.doc.uri == uri) for file in self.conf_files])
@@ -798,6 +802,10 @@ class KconfigServer(LSPServer):
 
 		return ctx.symbol_at(uri, Position.create(params['position']))
 
+	@handler('initialized')
+	def handle_initialized(self, params):
+		self.watch_files('**/Kconfig*')
+
 	@handler('kconfig/addBuild')
 	def handle_add_build(self, params):
 		ctx = self.create_ctx(params['root'], [ConfFile(Uri.file(f)) for f in params['conf']], params['env'])
@@ -961,6 +969,13 @@ class KconfigServer(LSPServer):
 				actions.extend(diag.actions)
 
 		return actions
+
+	def on_file_change(self, uri: Uri, kind: FileChangeKind):
+		if uri.basename.startswith('Kconfig'):
+			for ctx in self.ctx.values():
+				ctx.invalidate()
+				self.dbg(f'Invalidated context because of change in {uri}')
+
 
 def wait_for_debugger():
 	import debugpy

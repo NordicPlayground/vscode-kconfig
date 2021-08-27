@@ -1,6 +1,6 @@
 import inspect
 import os
-from typing import Union, Optional, List, Dict
+from typing import Any, Callable, Union, Optional, List, Dict
 import sys
 import re
 import json
@@ -49,6 +49,10 @@ class RPCError(Exception):
 	def to_dict(self):
 		return {"code": self.code, "message": self.message, "data": self.data}
 
+	@staticmethod
+	def create(obj):
+		return RPCError(obj['code'], obj['message'], obj.get('data'))
+
 class RPCResponse(RPCMsg):
 	def __init__(self, id: Optional[Union[str, int]]=None, result=None, error: RPCError=None):
 		super().__init__(JSONRPC)
@@ -72,10 +76,12 @@ class RPCServer:
 	def __init__(self, istream=None, ostream=None):
 		self._send_stream = ostream if ostream else sys.stdout
 		self._recv_stream = istream if istream else sys.stdin
-		self.req = None
+		self._req = None
 		self.log_file = 'lsp.log'
 		self.running = True
 		self.handlers = {}
+		self.requests = {}
+		self.request_id = 0
 		for method_name, _ in inspect.getmembers(self.__class__):
 			method = getattr(self.__class__, method_name)
 			if hasattr(method, '_rsp_method'):
@@ -116,12 +122,17 @@ class RPCServer:
 				content_type = value
 
 	def rsp(self, result=None, error: RPCError =None):
-		if not self.req:
+		if not self._req:
 			raise Exception('No command')
 
-		self.send(RPCResponse(self.req.id, result, error))
-		self.req = None
+		self.send(RPCResponse(self._req.id, result, error))
+		self._req = None
 
+	def req(self, method: str, params, handler: Optional[Callable[[RPCResponse], Any]] = None):
+		if handler:
+			self.requests[self.request_id] = handler
+		self.send(RPCRequest(self.request_id, method, params))
+		self.request_id += 1
 
 	def send(self, msg: RPCMsg):
 		raw = encode_json(msg)
@@ -130,20 +141,28 @@ class RPCServer:
 			'Content-Type: "application/vscode-jsonrpc; charset=utf-8"\r\nContent-Length: {}\r\n\r\n{}'.format(len(raw), raw))
 		self._send_stream.flush()
 
-	def _recv(self) -> Union[RPCNotification, RPCRequest]:
+	def _recv(self) -> Union[RPCNotification, RPCRequest, RPCResponse]:
 		length, _ = self._read_headers()
-		self.dbg('Receiving {} bytes...'.format(length))
 		data = self._recv_stream.read(length)
-		self.dbg('data: {}'.format(data))
+		self.dbg('recv: {}'.format(data))
 		obj = json.loads(data)
 
 		if 'id' in obj:
-			self.req = RPCRequest(obj['id'], obj['method'], obj['params'])
-			return self.req
+			if 'method' in obj:
+				self._req = RPCRequest(obj['id'], obj['method'], obj['params'])
+				return self._req
+			return RPCResponse(obj['id'], obj.get('result'), RPCError.create(obj['error']) if 'error' in obj else None)
 
 		return RPCNotification(obj['method'], obj['params'])
 
-	def handle(self, msg: Union[RPCNotification, RPCRequest]):
+	def handle(self, msg: Union[RPCNotification, RPCRequest, RPCResponse]):
+		if isinstance(msg, RPCResponse):
+			handler = self.requests.get(msg.id)
+			if handler:
+				handler(msg)
+				del self.requests[msg.id]
+			return
+
 		self.dbg('{} Method: {}'.format(type(msg).__name__, msg.method))
 
 		if msg.method in self.handlers:
@@ -164,11 +183,11 @@ class RPCServer:
 			end = datetime.now()
 			self.dbg('Handled in {} us'.format((end - start).microseconds))
 
-			if self.req:
+			if self._req:
 				self.rsp(result, error)
 		else:
 			self.dbg('No handler for "{}"'.format(msg.method))
-			if self.req:
+			if self._req:
 				self.rsp(None, RPCError(RPCErrorCode.METHOD_NOT_FOUND, 'Unknown method "{}"'.format(msg.method)))
 
 	def loop(self):
@@ -822,6 +841,10 @@ class Snippet:
 		self.text += ''.join(['${', str(number), '|', ','.join(choices), '|}'])
 		self._next_tabstop = number + 1
 
+class FileChangeKind(enum.IntEnum):
+	CREATED = 1
+	CHANGED = 2
+	DELETED = 3
 
 documentStore = DocumentStore()
 
@@ -833,6 +856,8 @@ class LSPServer(RPCServer):
 		self.name = name
 		self.version = version
 		self.trace = 'off'
+		self.watchers = []
+		self.capability_id = 0
 
 	def capabilities(self):
 		def has(method):
@@ -893,6 +918,23 @@ class LSPServer(RPCServer):
 		super().log(*args)
 		if self.trace == 'message':
 			self.send(RPCNotification('$/logTrace', {'message': '\n'.join(args)}))
+
+	def register_capability(self, method: str, options, handler: Optional[Callable[[RPCResponse], Any]] = None):
+		self.capability_id += 1
+		capability = {'id': str(self.capability_id), 'method': method, 'registerOptions': options}
+		self.req('client/registerCapability', {'registrations': [capability]}, handler)
+		return str(self.capability_id)
+
+	def watch_files(self, pattern: str, created=True, changed=True, deleted=True):
+		watcher = {
+			'globPattern': pattern,
+			'kind': (created * 1) + (changed * 2) + (deleted * 4),
+		}
+		self.watchers.append(watcher)
+		self.register_capability('workspace/didChangeWatchedFiles', {'watchers': [watcher]})
+
+	def on_file_change(self, uri: Uri, kind: FileChangeKind):
+		pass # Override in extending class
 
 	@handler('$/setTrace')
 	def handle_set_trace(self, params):
@@ -955,3 +997,10 @@ class LSPServer(RPCServer):
 	@handler('textDocument/didClose')
 	def handle_close(self, params):
 		documentStore.close(Uri.parse(params['textDocument']['uri']))
+
+	@handler('workspace/didChangeWatchedFiles')
+	def handle_changed_watched_files(self, params):
+		for change in params['changes']:
+			uri = Uri.parse(change['uri'])
+			kind = FileChangeKind(change['type'])
+			self.on_file_change(uri, kind)
