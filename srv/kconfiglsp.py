@@ -732,6 +732,25 @@ class KconfigServer(LSPServer):
 			'diagnostics': diags,
 		}))
 
+	def refresh_ctx(self, ctx: KconfigContext):
+		"""Reparse the given Kconfig context, and publish diagsnostics"""
+		if not ctx.valid:
+			self.dbg('Parsing...')
+			ctx.parse()
+
+		self.dbg('Load config...')
+		ctx.load_config()
+
+		self.dbg('Done. {} diags, {} warnings'.format(sum([len(file.diags) for file in ctx.conf_files]), len(ctx._kconfig.warnings)))
+
+		for conf in ctx.conf_files:
+			self.publish_diags(conf.doc.uri, conf.diags)
+
+		self.publish_diags(Uri.file('command-line'), ctx.cmd_diags)
+
+		for uri, diags in ctx.kconfig_diags.items():
+			self.publish_diags(uri, diags)
+
 	def create_ctx(self, root, conf_files, env):
 		"""
 		Create a Kconfig Context with the given parameters.
@@ -741,25 +760,12 @@ class KconfigServer(LSPServer):
 		self.dbg('Creating context...')
 		id = self._next_id
 		ctx = KconfigContext(root, conf_files, env, id)
-		self.dbg('Parsing...')
-		ctx.parse()
-		if not ctx.valid:
-			for uri, diags in ctx.kconfig_diags.items():
-				self.publish_diags(uri, diags)
 
-		self.dbg('Load config...')
-		try:
-			ctx.load_config()
-		except Exception as e:
-			self.dbg('FAILED: ' + str(e.__cause__))
-			raise
-		self.dbg('Done. {} diags, {} warnings'.format(sum([len(file.diags) for file in ctx.conf_files]), len(ctx._kconfig.warnings)))
+		self.refresh_ctx(ctx)
 
 		self.ctx[id] = ctx
 		self._next_id += 1
 		self.last_ctx = ctx
-		for conf in ctx.conf_files:
-			self.publish_diags(conf.doc.uri, conf.diags)
 		return ctx
 
 	def best_ctx(self, uri):
@@ -822,13 +828,7 @@ class KconfigServer(LSPServer):
 	def handle_change(self, params):
 		super().handle_change(params)
 		if self.last_ctx:
-			self.last_ctx.load_config()
-			self.dbg(self.last_ctx._kconfig.warnings)
-			self.dbg('Updating diags...')
-			for file in self.last_ctx.conf_files:
-				self.publish_diags(file.doc.uri, file.diags)
-			self.dbg(f'Command line: {len(self.last_ctx.cmd_diags)}')
-			self.publish_diags(Uri.file('command-line'), self.last_ctx.cmd_diags)
+			self.refresh_ctx(self.last_ctx)
 
 		# TODO: Add handling of Kconfig changes:
 		# - Reparse the active configuration
