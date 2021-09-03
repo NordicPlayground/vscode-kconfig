@@ -204,13 +204,12 @@ class RPCServer:
 
 
 class Uri:
-	def __init__(self, scheme:str, authority:str='', path: str='', query:str=None, fragment:str=None):
+	def __init__(self, scheme:str, authority:str='', path: str='', query:str='', fragment:str=''):
 		self.scheme = scheme
 		self.authority = authority
 		self.path = path
 		self.query = query
 		self.fragment = fragment
-
 
 	def __repr__(self):
 		uri = '{}://{}{}'.format(self.scheme, self.authority, self.path)

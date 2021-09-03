@@ -745,7 +745,8 @@ class KconfigServer(LSPServer):
 		self.dbg('Load config...')
 		ctx.load_config()
 
-		self.dbg('Done. {} diags, {} warnings'.format(sum([len(file.diags) for file in ctx.conf_files]), len(ctx._kconfig.warnings)))
+		if ctx.valid:
+			self.dbg('Done. {} diags, {} warnings'.format(sum([len(file.diags) for file in ctx.conf_files]), len(ctx._kconfig.warnings)))
 
 		for conf in ctx.conf_files:
 			self.publish_diags(conf.doc.uri, conf.diags)
