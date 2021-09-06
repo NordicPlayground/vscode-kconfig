@@ -686,8 +686,6 @@ class KconfigContext:
 
 	def load_config(self):
 		"""Load configuration files and update the diagnostics"""
-		self.clear_diags()
-
 		if not self.valid:
 			pass
 
@@ -755,6 +753,7 @@ class KconfigServer(LSPServer):
 
 	def refresh_ctx(self, ctx: KconfigContext):
 		"""Reparse the given Kconfig context, and publish diagsnostics"""
+		ctx.clear_diags()
 		if not ctx.valid:
 			self.dbg('Parsing...')
 			ctx.parse()
