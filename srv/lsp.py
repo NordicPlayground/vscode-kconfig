@@ -1,4 +1,5 @@
 import inspect
+from io import TextIOWrapper
 import os
 from typing import Any, Callable, Union, Optional, List, Dict
 import sys
@@ -283,7 +284,7 @@ class Position:
 
 	def __eq__(self, other):
 		if not isinstance(other, Position):
-            		return False
+			return False
 		return self.line == other.line and self.character == other.character
 
 	def __repr__(self):
@@ -292,6 +293,15 @@ class Position:
 	@staticmethod
 	def create(obj):
 		return Position(obj['line'], obj['character'])
+
+	@staticmethod
+	def start():
+		return Position(0, 0)
+
+	@staticmethod
+	def end():
+		return Position(999999, 999999)
+
 
 class Range:
 	def __init__(self, start: Position, end: Position):
@@ -369,9 +379,6 @@ class TextDocument:
 		if text:
 			self._set_text(text)
 
-	def _sanitize(self, text: str):
-		return text.replace('\r', '')
-
 	def on_change(self, cb):
 		self._cbs.append(cb)
 
@@ -390,19 +397,27 @@ class TextDocument:
 			return self.lines[index]
 
 	def offset(self, pos: Position):
-		if pos.line == 0:
-			return pos.character
-		return len(''.join([l + '\n' for l in self.lines[:pos.line]])) + pos.character
+		if pos.line >= len(self.lines):
+			return len(self.text)
+		character = min(len(self.lines[pos.line])+1, pos.character)
+		return len(''.join([l + '\n' for l in self.lines[:pos.line]])) + character
 
 	def pos(self, offset: int):
 		content = self.text[:offset]
 		lines = content.splitlines()
+		if len(lines) == 0:
+			return Position(0, 0)
 		return Position(len(lines) - 1, len(lines[-1]))
 
 	def get(self, range: Range = None):
 		if not range:
 			return self.text
-		return self.text[self.offset(range.start):self.offset(range.end)]
+		text = self.text[self.offset(range.start):self.offset(range.end)]
+
+		# Trim trailing newline if the range doesn't end on the next line:
+		if text.endswith('\n') and range.end.character != 0 and range.end.line < len(self.lines):
+			return text[:-1]
+		return text
 
 	def word_at(self, pos: Position):
 		line = self.line(pos.line)
@@ -410,7 +425,8 @@ class TextDocument:
 			return re.match(r'.*?(\w*)$', line[:pos.character])[1] + re.match(r'^\w*', line[pos.character:])[0]
 
 	def replace(self, text:str, range: Range = None):
-		if range:
+		# Ignore range if the file is empty:
+		if range and len(self.lines) > 0:
 			self._set_text(self.text[:self.offset(range.start)] + text + self.text[self.offset(range.end):])
 		else:
 			self._set_text(text)
@@ -433,6 +449,12 @@ class TextDocument:
 		self._set_text(text)
 		self.modified = False
 		self.version = TextDocument.UNKNOWN_VERSION
+
+	@staticmethod
+	def from_disk(uri: Uri):
+		with open(uri.path, 'r') as f:
+			doc = TextDocument(uri, f.read())
+		return doc
 
 	# Standard File behavior:
 
@@ -472,6 +494,7 @@ class TextDocument:
 			self._read_from_disk()
 		self._mode = mode
 		self._scanpos = 0
+		return self
 
 	def close(self):
 		if self._mode in ['a', 'w'] and self.modified:
