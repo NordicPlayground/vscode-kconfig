@@ -191,7 +191,7 @@ def _missing_deps(sym):
 	deps = kconfiglib.split_expr(sym.direct_dep, kconfiglib.AND)
 
 	if sym.type in (kconfiglib.BOOL, kconfiglib.TRISTATE):
-		return [dep for dep in deps if kconfiglib.expr_value(dep) < sym.user_value]
+		return [dep for dep in deps if kconfiglib.expr_value(dep) == 0]
 	# string/int/hex
 	return [dep for dep in deps if kconfiglib.expr_value(dep) == 0]
 
@@ -584,47 +584,52 @@ class KconfigContext:
 		if sym.type in [kconfiglib.BOOL, kconfiglib.TRISTATE]:
 			user_value = kconfiglib.TRI_TO_STR[user_value]
 
-		if user_value != sym.str_value:
-			actions = []
+		actions = []
+		if user_value == sym.str_value:
+			msg = f'CONFIG_{sym.name} was already disabled.'
+			severity = Diagnostic.HINT
+		elif len(sym.str_value):
+			msg = f'CONFIG_{sym.name} was assigned the value {entry.raw}, but got the value {sym.str_value}.'
+			severity = Diagnostic.WARNING
+		else:
+			msg = f'CONFIG_{sym.name} couldn\'t be set.'
+			severity = Diagnostic.WARNING
 
-			if len(sym.str_value):
-				warn = f'CONFIG_{sym.name} was assigned the value {entry.raw}, but got the value {sym.str_value}.'
-			else:
-				warn = f'CONFIG_{sym.name} couldn\'t be set.'
+		deps = _missing_deps(sym)
+		if deps:
+			msg += ' Missing dependencies:\n'
+			msg += ' && '.join([kconfiglib.expr_str(dep) for dep in deps])
+			edits = []
 
-			deps = _missing_deps(sym)
-			if deps:
-				warn += ' Missing dependencies:\n'
-				warn += ' && '.join([kconfiglib.expr_str(dep) for dep in deps])
-				edits = []
+			for dep in deps:
+				if isinstance(dep, kconfiglib.Symbol) and dep.type == kconfiglib.BOOL:
+					dep_entry = next((entry for entry in file.entries() if entry.name == dep.name), None)
+					if dep_entry:
+						edits.append({'dep': dep.name, 'edit': TextEdit(dep_entry.value_range, 'y')})
+					else:
+						edits.append({'dep': dep.name, 'edit': TextEdit(Range(entry.line_range.start, entry.line_range.start), f'CONFIG_{dep.name}=y\n')})
 
-				for dep in deps:
-					if isinstance(dep, kconfiglib.Symbol) and dep.type == kconfiglib.BOOL:
-						dep_entry = next((entry for entry in file.entries() if entry.name == dep.name), None)
-						if dep_entry:
-							edits.append({'dep': dep.name, 'edit': TextEdit(dep_entry.value_range, 'y')})
-						else:
-							edits.append({'dep': dep.name, 'edit': TextEdit(Range(entry.line_range.start, entry.line_range.start), f'CONFIG_{dep.name}=y\n')})
+			if len(edits) == 1:
+				action = CodeAction(f'Enable CONFIG_{edits[0]["dep"]} to resolve dependency')
+				action.edit.add(file.uri, edits[0]['edit'])
+				actions.append(action)
+			elif len(edits) > 1:
+				action = CodeAction(f'Enable {len(edits)} entries to resolve dependencies')
 
-				if len(edits) == 1:
-					action = CodeAction(f'Enable CONFIG_{edits[0]["dep"]} to resolve dependency')
-					action.edit.add(file.uri, edits[0]['edit'])
-					actions.append(action)
-				elif len(edits) > 1:
-					action = CodeAction(f'Enable {len(edits)} entries to resolve dependencies')
+				# Dependencies are registered with a "nearest first" approach in kconfiglib.
+				# As the nearest dependency is likely lowest in the menu hierarchy, we'll
+				# reverse the list of edits, so the highest dependency is inserted first:
+				edits.reverse()
 
-					# Dependencies are registered with a "nearest first" approach in kconfiglib.
-					# As the nearest dependency is likely lowest in the menu hierarchy, we'll
-					# reverse the list of edits, so the highest dependency is inserted first:
-					edits.reverse()
-
-					for edit in edits:
-						action.edit.add(file.uri, edit['edit'])
-					actions.append(action)
+				for edit in edits:
+					action.edit.add(file.uri, edit['edit'])
+				actions.append(action)
 
 			actions.append(entry.remove())
 
-			diag = Diagnostic.warn(warn, entry.range)
+			diag = Diagnostic(msg, entry.range, severity)
+			if severity == Diagnostic.HINT:
+				diag.mark_unnecessary()
 			for action in actions:
 				diag.add_action(action)
 

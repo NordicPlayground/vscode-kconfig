@@ -768,6 +768,9 @@ class Diagnostic:
 		action.diagnostics.append(self)
 		self.actions.append(action)
 
+	def mark_unnecessary(self):
+		self.tags.append(Diagnostic.Tag.UNNECESSARY)
+
 	@staticmethod
 	def err(message, range):
 		return Diagnostic(message, range, Diagnostic.ERROR)
