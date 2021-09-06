@@ -66,8 +66,10 @@ class Kconfig(kconfiglib.Kconfig):
 
 		This is split out from the constructor to avoid nixing the whole object on parsing errors.
 		"""
+		self.valid = False
 		self._init(self.filename, True, False, 'utf-8')
-		self.valid = True
+		if self.unique_defined_syms:
+			self.valid = True
 
 	def loc(self):
 		if self.filename and self.linenr != None:
@@ -427,8 +429,11 @@ class KconfigContext:
 			if loc:
 				self.kconfig_diag(loc.uri, Diagnostic.err(msg, loc.range))
 			else:
-				self.kconfig_diag(Uri.file(
-					'command-line'), Diagnostic.err(msg, Range(Position(0, 0), Position(0, 0))))
+				self.cmd_diags.append(Diagnostic.err(
+					msg, Range(Position.start(), Position.start())))
+		except Exception as e:
+			self.cmd_diags.append(Diagnostic.err('Kconfig failed: ' + str(e),
+                                       Range(Position.start(), Position.start())))
 		self.version += 1
 
 	def kconfig_diag(self, uri: Uri, diag: Diagnostic):
@@ -686,23 +691,30 @@ class KconfigContext:
 		if not self.valid:
 			pass
 
-		self._kconfig.load_config(self.board.conf_file, replace=True)
+		try:
+			self._kconfig.load_config(self.board.conf_file, replace=True)
 
-		for file in self.conf_files:
-			self._kconfig.load_config(file.uri.path, replace=False)
+			for file in self.conf_files:
+				self._kconfig.load_config(file.uri.path, replace=False)
 
-		self.lint()
+			self.lint()
 
-		for filename, diags in self._kconfig.diags.items():
-			if filename == '':
-				self.cmd_diags.extend(diags)
-			else:
-				uri = Uri.file(filename)
-				conf = self.conf_file(uri)
-				if conf:
-					conf.diags.extend(diags)
-				else:
+			for filename, diags in self._kconfig.diags.items():
+				if filename == '':
 					self.cmd_diags.extend(diags)
+				else:
+					uri = Uri.file(filename)
+					conf = self.conf_file(uri)
+					if conf:
+						conf.diags.extend(diags)
+					else:
+						self.cmd_diags.extend(diags)
+		except AttributeError as e:
+			self.cmd_diags.append(Diagnostic.err(
+				'Kconfig tree parse failed: Invalid attribute ' + str(e), Range(Position.start(), Position.start())))
+		except Exception as e:
+			self.cmd_diags.append(Diagnostic.err(
+				'Kconfig tree parse failed: ' + str(e), Range(Position.start(), Position.start())))
 
 	def symbol_at(self, uri, pos):
 		"""Get the symbol referenced at a given position in a conf file."""
