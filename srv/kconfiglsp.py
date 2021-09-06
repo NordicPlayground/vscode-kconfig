@@ -653,7 +653,7 @@ class KconfigContext:
 		"""Check whether an entry's value matches the default value, and mark it as redundant"""
 		if sym._str_default() == sym.user_value:
 			diag = Diagnostic.hint(f'Value is {entry.raw} by default', entry.full_range)
-			diag.tags = [Diagnostic.Tag.UNNECESSARY]
+			diag.mark_unnecessary()
 			diag.add_action(entry.remove('Remove redundant entry'))
 			file.diags.append(diag)
 			return True
