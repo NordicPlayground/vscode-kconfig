@@ -135,6 +135,27 @@ class RPCServer:
 		self.send(RPCRequest(self.request_id, method, params))
 		self.request_id += 1
 
+	def notify(self, method: str, params):
+		"""
+		Issue a notification to the client.
+
+		Notifications must specify a remote method to invoke, and may optionally supply parameters
+		to the method. Notifications do not get responses.
+
+		Example::
+
+			self.notify('remoteFunction', [1, 2, 3])
+
+		Parameters
+		----------
+		method: str
+			Remote method to invoke.
+		params: Any
+			Optional parameters for the method.
+		"""
+
+		self.send(RPCNotification(method, params))
+
 	def send(self, msg: RPCMsg):
 		raw = encode_json(msg)
 		self.dbg('send: ' + raw)

@@ -746,10 +746,10 @@ class KconfigServer(LSPServer):
 
 	def publish_diags(self, uri, diags: List[Diagnostic]):
 		"""Send a diagnostics publication notification"""
-		self.send(RPCNotification('textDocument/publishDiagnostics', {
+		self.notify('textDocument/publishDiagnostics', {
 			'uri': uri,
 			'diagnostics': diags,
-		}))
+		})
 
 	def refresh_ctx(self, ctx: KconfigContext):
 		"""Reparse the given Kconfig context, and publish diagsnostics"""
