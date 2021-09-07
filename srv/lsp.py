@@ -126,13 +126,13 @@ class RPCServer:
 		if not self._req:
 			raise Exception('No command')
 
-		self.send(RPCResponse(self._req.id, result, error))
+		self._send(RPCResponse(self._req.id, result, error))
 		self._req = None
 
 	def req(self, method: str, params, handler: Optional[Callable[[RPCResponse], Any]] = None):
 		if handler:
 			self.requests[self.request_id] = handler
-		self.send(RPCRequest(self.request_id, method, params))
+		self._send(RPCRequest(self.request_id, method, params))
 		self.request_id += 1
 
 	def notify(self, method: str, params):
@@ -154,9 +154,10 @@ class RPCServer:
 			Optional parameters for the method.
 		"""
 
-		self.send(RPCNotification(method, params))
+		self._send(RPCNotification(method, params))
 
-	def send(self, msg: RPCMsg):
+	def _send(self, msg: RPCMsg):
+		"""Internal: Send an RPCMessage to the client"""
 		raw = encode_json(msg)
 		self.dbg('send: ' + raw)
 		self._send_stream.write(
