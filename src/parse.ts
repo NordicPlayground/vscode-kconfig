@@ -8,7 +8,6 @@ import * as path from 'path';
 import * as glob from "glob";
 import { Repository, Scope, Config, ConfigValueType, ConfigEntry, ConfigKind, IfScope, MenuScope, ChoiceScope, ChoiceEntry, Comment } from "./kconfig";
 import * as kEnv from './env';
-import { createExpression } from './evaluate';
 
 type FileInclusion = {range: vscode.Range, file: ParsedFile};
 
@@ -18,18 +17,16 @@ export class ParsedFile {
 	readonly repo: Repository;
 	readonly parent?: ParsedFile;
 	readonly env: {[name: string]: string};
-	readonly scope: Scope;
 
 	version: number;
 	inclusions: FileInclusion[];
 	entries: ConfigEntry[];
 	diags: vscode.Diagnostic[];
 
-	constructor(repo: Repository, uri: vscode.Uri, env: {[name: string]: string}, scope: Scope, parent?: ParsedFile) {
+	constructor(repo: Repository, uri: vscode.Uri, env: {[name: string]: string}, parent?: ParsedFile) {
 		this.repo = repo;
 		this.uri = uri;
 		this.env = { ...env };
-		this.scope = scope;
 		this.parent = parent;
 
 		this.inclusions = [];
@@ -44,7 +41,6 @@ export class ParsedFile {
 			this.uri.fsPath === other.uri.fsPath &&
 			Object.keys(other.env).length === myEnvKeys.length &&
 			myEnvKeys.every(key => key in other.env && other.env[key] === this.env[key]) &&
-			(this.scope === other.scope || (!!this.scope && !!other.scope?.match(this.scope))) &&
 			(this.parent === other.parent || (!!this.parent && !!other.parent?.match(this.parent)))
 		);
 	}
@@ -72,10 +68,6 @@ export class ParsedFile {
 
 		var oldInclusions = this.inclusions;
 
-		if (this.scope) {
-			this.scope.children = this.scope.children.filter(c => !(c instanceof Scope) || (c.file !== this));
-		}
-
 		this.wipeEntries();
 
 		this.parseRaw(change ? change.document.getText() : kEnv.readFile(this.uri));
@@ -100,17 +92,11 @@ export class ParsedFile {
 	}
 
 	wipeEntries() {
-		this.entries.splice(0).forEach(e => {
-			e.config.removeEntry(e);
-		});
+		this.entries.splice(0).forEach((e) => this.repo.removeEntry(e));
 	}
 
 	delete() {
 		this.wipeEntries();
-		if (this.scope) {
-			this.scope.children = this.scope.children.filter(c => c.file !== this);
-		}
-
 		this.inclusions.splice(0).forEach(i => i.file.delete());
 	}
 
@@ -140,31 +126,34 @@ export class ParsedFile {
 		this.reset();
 		var choice: ChoiceEntry | null = null;
 		var env = {...this.env};
-		var scope = this.scope;
-		if (scope instanceof ChoiceScope) {
-			choice = scope.choice;
-		}
+		var scopes: Scope[] = [];
 
 		var lines = text.split(/\r?\n/g);
 		if (!lines) {
 			return;
 		}
 
-		var setScope = (s: Scope) => {
-			if (s && scope) {
-				scope = scope.addScope(s);
-			} else {
-				scope = s;
+		const getScope = () => {
+			if (scopes.length > 0) {
+				return scopes[scopes.length - 1];
 			}
+
+			return undefined;
+		}
+
+		const setScope = (s: Scope) => {
+			if (s && scopes.length) {
+				scopes[scopes.length - 1].addScope(s);
+			}
+			scopes.push(s);
 		};
 
 		var unterminatedScope = (s?: Scope) => {
 			if (s) {
-				var type = s.id.split('(')[0];
 				this.diags.push(
 					new vscode.Diagnostic(
 						new vscode.Range(s.lines.start, 0, s.lines.start, 9999),
-						`Unterminated ${type}. Expected matching end${type} before end of parent scope.`,
+						`Unterminated ${s.type}. Expected matching end${s.type} before end of parent scope.`,
 						vscode.DiagnosticSeverity.Error
 					)
 				);
@@ -240,6 +229,7 @@ export class ParsedFile {
 				continue;
 			}
 
+			const scope = getScope();
 			var name: string;
 			var match = line.match(configMatch);
 			var c: Config;
@@ -248,16 +238,16 @@ export class ParsedFile {
 				if (name in this.repo.configs) {
 					c = this.repo.configs[name];
 				} else {
-					c = new Config(name, match[1] as ConfigKind, this.repo);
+					c = new Config(name, match[1] as ConfigKind);
 					this.repo.configs[name] = c;
 				}
 
-				entry = new ConfigEntry(c, lineNumber, this, scope);
+				entry = new ConfigEntry(c, lineNumber, this);
 
 				this.entries.push(entry);
 
 				if (choice) {
-					choice.choices.push(entry.config);
+					choice.choices.push(entry);
 				}
 				continue;
 			}
@@ -278,21 +268,21 @@ export class ParsedFile {
 				if (includeFile.scheme === 'file') {
 					let matches = glob.sync(includeFile.fsPath);
 					matches.forEach(match => {
-						this.inclusions.push({range: range, file: new ParsedFile(this.repo, vscode.Uri.file(match), env, scope, this)});
+						this.inclusions.push({range: range, file: new ParsedFile(this.repo, vscode.Uri.file(match), env, this)});
 					});
 					if (matches.length === 0 && !optional) {
 						console.log(`Unable to resolve include ${match[4]} @ ${this.uri.fsPath}:L${lineNumber + 1}`);
 						this.diags.push(new vscode.Diagnostic(lineRange, 'Unable to resolve include'));
 					}
 				} else {
-					this.inclusions.push({range: range, file: new ParsedFile(this.repo, includeFile, env, scope, this)});
+					this.inclusions.push({range: range, file: new ParsedFile(this.repo, includeFile, env, this)});
 				}
 				continue;
 			}
 			match = line.match(choiceMatch);
 			if (match) {
 				name = match[1] || `<choice @ ${vscode.workspace.asRelativePath(this.uri.fsPath)}:${lineNumber}>`;
-				choice = new ChoiceEntry(name, lineNumber, this.repo, this, scope);
+				choice = new ChoiceEntry(name, lineNumber, this);
 				setScope(new ChoiceScope(choice));
 				entry = choice;
 				continue;
@@ -303,7 +293,7 @@ export class ParsedFile {
 				choice = null;
 				if (scope instanceof ChoiceScope) {
 					scope.lines.end = lineNumber;
-					scope = scope.parent!;
+					scopes.pop();
 				} else {
 					this.diags.push(new vscode.Diagnostic(lineRange, `Unexpected endchoice`, vscode.DiagnosticSeverity.Error));
 					unterminatedScope(scope);
@@ -313,7 +303,7 @@ export class ParsedFile {
 			match = line.match(ifMatch);
 			if (match) {
 				entry = null;
-				setScope(new IfScope(match[1], this.repo, lineNumber, this, scope!));
+				setScope(new IfScope(match[1], lineNumber, this));
 				continue;
 			}
 			match = line.match(endifMatch);
@@ -321,7 +311,7 @@ export class ParsedFile {
 				entry = null;
 				if (scope instanceof IfScope) {
 					scope.lines.end = lineNumber;
-					scope = scope.parent;
+					scopes.pop();
 				} else {
 					this.diags.push(new vscode.Diagnostic(lineRange, `Unexpected endif`, vscode.DiagnosticSeverity.Error));
 					unterminatedScope(scope);
@@ -331,7 +321,7 @@ export class ParsedFile {
 			match = line.match(menuMatch);
 			if (match) {
 				entry = null;
-				setScope(new MenuScope(match[2], this.repo, lineNumber, this, scope!));
+				setScope(new MenuScope(match[2], lineNumber, this));
 				continue;
 			}
 			match = line.match(endMenuMatch);
@@ -339,7 +329,7 @@ export class ParsedFile {
 				entry = null;
 				if (scope instanceof MenuScope) {
 					scope.lines.end = lineNumber;
-					scope = scope.parent;
+					scopes.pop();
 				} else {
 					this.diags.push(new vscode.Diagnostic(lineRange, `Unexpected endmenu`, vscode.DiagnosticSeverity.Error));
 					unterminatedScope(scope);
@@ -374,7 +364,7 @@ export class ParsedFile {
 			match = line.match(visibleMatch);
 			if (match) {
 				if (scope instanceof MenuScope && !entry) {
-					scope.visible = createExpression(match[1]);
+					scope.visible = match[1];
 				} else {
 					this.diags.push(new vscode.Diagnostic(lineRange, `Only valid for menus`, vscode.DiagnosticSeverity.Error));
 				}
@@ -411,7 +401,7 @@ export class ParsedFile {
 					this.diags.push(noEntryDiag);
 					continue;
 				}
-				entry.selects.push({name: match[1], condition: createExpression(match[2])});
+				entry.selects.push({ name: match[1], condition: match[2] });
 				entry.extend(lineNumber);
 				continue;
 			}
@@ -448,7 +438,7 @@ export class ParsedFile {
 				}
 				ifStatement = match[1].match(/(.*)if\s+([^#]+)/);
 				if (ifStatement) {
-					entry.defaults.push({ value: ifStatement[1], condition: createExpression(ifStatement[2]) });
+					entry.defaults.push({ value: ifStatement[1], condition: ifStatement[2] });
 				} else {
 					entry.defaults.push({ value: match[1] });
 				}
@@ -464,7 +454,7 @@ export class ParsedFile {
 				entry.type = match[1] as ConfigValueType;
 				ifStatement = match[2].match(/(.*)if\s+([^#]+)/);
 				if (ifStatement) {
-					entry.defaults.push({ value: ifStatement[1], condition: createExpression(ifStatement[2]) });
+					entry.defaults.push({ value: ifStatement[1], condition: ifStatement[2] });
 				} else {
 					entry.defaults.push({ value: match[2] });
 				}
@@ -480,7 +470,7 @@ export class ParsedFile {
 				entry.type = 'string';
 				ifStatement = match[1].match(/(.*)if\s+([^#]+)/);
 				if (ifStatement) {
-					entry.defaults.push({ value: ifStatement[1], condition: createExpression(ifStatement[2]) });
+					entry.defaults.push({ value: ifStatement[1], condition: ifStatement[2] });
 				} else {
 					entry.defaults.push({ value: match[1] });
 				}
@@ -496,7 +486,7 @@ export class ParsedFile {
 				entry.ranges.push({
 					min: match[1],
 					max: match[2],
-					condition: createExpression(match[3]),
+					condition: match[3],
 				});
 				entry.extend(lineNumber);
 				continue;

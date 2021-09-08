@@ -5,23 +5,12 @@
  */
 import * as vscode from 'vscode';
 import * as fuzzy from "fuzzysort";
-import { Operator } from './evaluate';
-import { Config, ConfigEntry, Repository, IfScope, Scope, Comment } from "./kconfig";
+import { Config, ConfigEntry, Repository, IfScope, Scope, Comment, RootScope } from "./kconfig";
 import * as kEnv from './env';
 import * as zephyr from './zephyr';
-import * as fs from 'fs';
 import * as path from 'path';
-import Api from './api';
-import { Context } from './context';
 import * as lsp from './lspClient';
-
-function isConfFile(doc?: vscode.TextDocument): boolean {
-	// Files like .gitconfig is also a properties file. Check extensions in addition:
-	return (
-		doc?.languageId === "properties" &&
-		(doc.fileName.endsWith(".conf") || doc.fileName.endsWith("_defconfig"))
-	);
-}
+import Api from './api';
 
 export class KconfigLangHandler
 	implements
@@ -30,15 +19,12 @@ export class KconfigLangHandler
 		vscode.CompletionItemProvider,
 		vscode.DocumentLinkProvider,
 		vscode.ReferenceProvider,
-		vscode.CodeActionProvider,
-		vscode.DocumentSymbolProvider,
-		vscode.WorkspaceSymbolProvider {
+		vscode.DocumentSymbolProvider {
 	diags: vscode.DiagnosticCollection;
 	fileDiags: {[uri: string]: vscode.Diagnostic[]};
 	rootCompletions: vscode.CompletionItem[];
 	propertyCompletions: vscode.CompletionItem[];
 	repo: Repository;
-	context?: Context;
 	configured = false;
 	rescanTimer?: NodeJS.Timeout;
 	constructor() {
@@ -114,51 +100,12 @@ export class KconfigLangHandler
 		}
 	}
 
-	async onOpenConfFile(uri: vscode.Uri) {
-		const existing = this.context?.getFile(uri);
-		if (existing) {
-			existing.lint();
-			return;
-		}
-
-		if (this.configured || !zephyr.zephyrRoot) {
-			/* Don't abandon the current context if it has been set by the API */
-			return;
-		}
-
-		const confFiles = new Array<vscode.Uri>();
-
-		const boardFile = zephyr.boardConfFile();
-		if (boardFile) {
-			confFiles.push(boardFile);
-		}
-
-		confFiles.push(uri);
-
-		this.context = new Context(confFiles, this.repo, this.diags);
-
-		let kconfigRoot = vscode.Uri.joinPath(vscode.Uri.file(path.dirname(uri.fsPath)), 'Kconfig');
-		if (!fs.existsSync(kconfigRoot.fsPath)) {
-			kconfigRoot = vscode.Uri.joinPath(vscode.Uri.file(zephyr.zephyrRoot), 'Kconfig');
-		}
-
-		if (this.repo.root?.uri.fsPath !== kconfigRoot.fsPath) {
-			this.repo.setRoot(kconfigRoot);
-			this.rescan();
-		}
-
-		await this.context.reparse();
-		return this.context.getFile(uri)!.lint();
-	}
-
 	registerHandlers(context: vscode.ExtensionContext) {
 		var disposable: vscode.Disposable;
 
 		disposable = vscode.workspace.onDidChangeTextDocument(async e => {
 			if (e.document.languageId === 'kconfig') {
 				this.repo.onDidChange(e.document.uri, e);
-			} else if (isConfFile(e.document) && e.contentChanges.length > 0) {
-				this.context?.onChange(e);
 			}
 		});
 		context.subscriptions.push(disposable);
@@ -172,18 +119,6 @@ export class KconfigLangHandler
 			}
 		});
 		context.subscriptions.push(watcher);
-
-		disposable = vscode.window.onDidChangeActiveTextEditor(e => {
-			if (e && isConfFile(e.document)) {
-				return this.onOpenConfFile(e.document.uri);
-			}
-		});
-		context.subscriptions.push(disposable);
-
-		disposable = vscode.workspace.onDidSaveTextDocument(d => {
-			this.context?.getFile(d.uri)?.lint();
-		});
-		context.subscriptions.push(disposable);
 
 		disposable = vscode.workspace.onDidOpenTextDocument(d => {
 			this.setFileType(d);
@@ -202,23 +137,18 @@ export class KconfigLangHandler
 		context.subscriptions.push(disposable);
 
 		const kconfig = [{ language: 'kconfig', scheme: 'file' }, { language: 'kconfig', scheme: 'kconfig' }];
-		const properties = [{ language: 'properties', scheme: 'file' }];
 		const cFiles = [{ language: 'c', scheme: 'file' }];
-		const all = [...kconfig, ...properties, ...cFiles];
+		const all = [...kconfig, ...cFiles];
 
 		disposable = vscode.languages.registerDefinitionProvider(all, this);
 		context.subscriptions.push(disposable);
 		disposable = vscode.languages.registerHoverProvider(all, this);
 		context.subscriptions.push(disposable);
-		disposable = vscode.languages.registerCompletionItemProvider([...kconfig, ...properties], this);
+		disposable = vscode.languages.registerCompletionItemProvider(kconfig, this);
 		context.subscriptions.push(disposable);
 		disposable = vscode.languages.registerDocumentLinkProvider(kconfig, this);
 		context.subscriptions.push(disposable);
-		disposable = vscode.languages.registerCodeActionsProvider(properties, this);
-		context.subscriptions.push(disposable);
-		disposable = vscode.languages.registerDocumentSymbolProvider([...kconfig, ...properties], this);
-		context.subscriptions.push(disposable);
-		disposable = vscode.languages.registerWorkspaceSymbolProvider(this);
+		disposable = vscode.languages.registerDocumentSymbolProvider(kconfig, this);
 		context.subscriptions.push(disposable);
 		disposable = vscode.languages.registerReferenceProvider(kconfig, this);
 		context.subscriptions.push(disposable);
@@ -244,15 +174,6 @@ export class KconfigLangHandler
 		return this.doScan();
 	}
 
-	scanConfFiles() {
-		// Parse all open conf files, then lint the open editors:
-		this.context?.reparse().then(() => {
-			this.context!.confFiles
-				.filter(file => vscode.window.visibleTextEditors.find(e => file.uri.fsPath === e.document?.uri.fsPath))
-				.forEach(file => file.scheduleLint());
-		});
-	}
-
 	activate(context: vscode.ExtensionContext) {
 		zephyr.onWestChange(context, () => this.delayedRescan());
 
@@ -269,13 +190,6 @@ export class KconfigLangHandler
 
 		root ??= vscode.Uri.joinPath(vscode.Uri.file(zephyr.zephyrRoot), 'Kconfig');
 
-		const changedContext =
-			!this.configured ||
-			board.board !== zephyr.board?.board ||
-			confFiles.length !== this.context?.confFiles.length ||
-			!confFiles.some((uri) =>
-				this.context?.confFiles.find((p) => p.uri.fsPath === uri.fsPath)
-			);
 		const changedRepo =
 			!this.configured ||
 			this.repo.root?.uri.fsPath !== root.fsPath ||
@@ -285,14 +199,6 @@ export class KconfigLangHandler
 			zephyr.setBoard(board);
 			this.repo.setRoot(root);
 			this.rescan();
-		}
-
-		if (changedContext) {
-			this.context = new Context([zephyr.boardConfFile()!, ...confFiles], this.repo, this.diags);
-		}
-
-		if (changedRepo || changedContext) {
-			this.scanConfFiles();
 		}
 
 		this.configured = true;
@@ -370,21 +276,14 @@ export class KconfigLangHandler
 
 	provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
 		var line = document.lineAt(position.line);
-		var isProperties = (document.languageId === 'properties');
 		var items: vscode.CompletionItem[];
 
-		if (!isProperties && !line.text.match(/(if|depends\s+on|select|default|def_bool|def_tristate|def_int|def_hex|range)/)) {
+		if (!line.text.match(/(if|depends\s+on|select|default|def_bool|def_tristate|def_int|def_hex|range)/)) {
 			if (line.firstNonWhitespaceCharacterIndex > 0) {
 				return this.propertyCompletions;
 			}
 
 			return this.rootCompletions;
-		}
-
-		if (isProperties) {
-			var lineRange = new vscode.Range(position.line, 0, position.line, 999999);
-			var lineText = document.getText(lineRange);
-			var replaceText = lineText.replace(/\s*#.*$/, '');
 		}
 
 		const kinds = {
@@ -394,53 +293,14 @@ export class KconfigLangHandler
 		};
 
 		items = this.repo.configList.map(e => {
-			var item = new vscode.CompletionItem(isProperties ? `CONFIG_${e.name}` : e.name, (e.kind ? kinds[e.kind] : vscode.CompletionItemKind.Text));
+			var item = new vscode.CompletionItem(e.name, (e.kind ? kinds[e.kind] : vscode.CompletionItemKind.Text));
 			item.sortText = e.name;
 			item.detail = e.text;
-			if (isProperties) {
-				if (replaceText.length > 0) {
-					item.range = new vscode.Range(position.line, 0, position.line, replaceText.length);
-				}
-
-				item.insertText = new vscode.SnippetString(`${item.label}=`);
-				switch (e.type) {
-					case 'bool':
-						if (e.defaults.length > 0 && e.defaults[0].value === 'y') {
-							item.insertText.appendPlaceholder('n');
-						} else {
-							item.insertText.appendPlaceholder('y');
-						}
-						break;
-					case 'tristate':
-						item.insertText.appendPlaceholder('y');
-						break;
-					case 'int':
-					case 'string':
-						if (e.defaults.length > 0) {
-							item.insertText.appendPlaceholder(e.defaults[0].value);
-						} else {
-							item.insertText.appendTabstop();
-						}
-						break;
-					case 'hex':
-						if (e.defaults.length > 0) {
-							item.insertText.appendPlaceholder(e.defaults[0].value);
-						} else {
-							item.insertText.appendText('0x');
-							item.insertText.appendTabstop();
-						}
-						break;
-					default:
-						break;
-				}
-			}
 
 			return item;
 		});
 
-		if (!isProperties) {
-			items.push(new vscode.CompletionItem('if', vscode.CompletionItemKind.Keyword));
-		}
+		items.push(new vscode.CompletionItem('if', vscode.CompletionItemKind.Keyword));
 
 		return items;
 	}
@@ -493,34 +353,16 @@ export class KconfigLangHandler
 			return null;
 		}
 		return this.repo.configList
-			.filter(config => (
-				config.allSelects(entry.name).length > 0 ||
-				config.hasDependency(entry!.name)))
-			.map(config => config.entries[0].loc); // TODO: return the entries instead?
-	}
-
-	provideCodeActions(document: vscode.TextDocument,
-		range: vscode.Range | vscode.Selection,
-		context: vscode.CodeActionContext,
-		token: vscode.CancellationToken): vscode.ProviderResult<vscode.CodeAction[]> {
-		return this.context?.getFile(document.uri)
-			?.actions
-			.filter(a => (!context.only || context.only === a.kind) && a.diagnostics?.[0].range.intersection(range));
+			.filter(
+				(config) =>
+					[...config.selects, ...config.implys].filter(
+						(select) => select.name === entry.name
+					).length > 0
+			)
+			.map((config) => config.entries[0].loc); // TODO: return the entries instead?
 	}
 
 	provideDocumentSymbols(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.ProviderResult<vscode.DocumentSymbol[]> {
-		if (document.languageId === 'properties') {
-			return this.context?.getFile(document.uri)?.overrides.map(
-					o =>
-						new vscode.DocumentSymbol(
-							o.config.name,
-							o.config.text ?? "",
-							o.config.symbolKind(),
-							new vscode.Range(o.line!, 0, o.line!, 99999),
-							new vscode.Range(o.line!, 0, o.line!, 99999)
-						)
-				);
-		}
 		var file = this.repo.files.find(f => f.uri.fsPath === document.uri.fsPath);
 		if (!file) {
 			return [];
@@ -528,8 +370,9 @@ export class KconfigLangHandler
 
 		var addScope = (scope: Scope): vscode.DocumentSymbol => {
 			var name: string = scope.name;
-			if ((scope instanceof IfScope) && (scope.expr?.operator === Operator.VAR)) {
-				var config = this.repo.configs[scope.expr.var!.value];
+			if ((scope instanceof IfScope)) {
+				// Render symbol name for `if SYMBOL`-like if scopes:
+				var config = this.repo.configs[scope.expr.trim()];
 				name = config?.text ?? config?.name ?? scope.name;
 			}
 
@@ -562,32 +405,32 @@ export class KconfigLangHandler
 			return symbol;
 		};
 
-		return addScope(file.scope).children;
+		return addScope(new RootScope(this.repo)).children;
 	}
-
-	provideWorkspaceSymbols(query: string, token: vscode.CancellationToken): vscode.ProviderResult<vscode.SymbolInformation[]> {
-		var entries: Config[];
-		query = query?.replace(/^(CONFIG_)?/, '');
-
-		if (query) {
-			entries = fuzzy.go(query, this.repo.configList, { key: 'name' }).map(result => result.obj);
-		} else {
-			entries = this.repo.configList;
-		}
-
-		return entries.map(e => new vscode.SymbolInformation(
-			`CONFIG_${e.name}`,
-			vscode.SymbolKind.Property,
-			e.text ?? '',
-			e.entries[0].loc));
-	}
-
 }
 
 export var langHandler: KconfigLangHandler | undefined;
+var context: vscode.ExtensionContext;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function startExtension() {
+	const success = await zephyr.resolveEnvironment(context);
+	if (success) {
+		langHandler = new KconfigLangHandler();
+		langHandler.activate(context);
+	}
+
 	lsp.activate(context);
+
+	return success;
+}
+
+export function activate(ctx: vscode.ExtensionContext) {
+	context = ctx;
+	if (!vscode.extensions.getExtension('nordic-semiconductor.nrf-connect')) {
+		startExtension();
+	}
+
+	return new Api();
 }
 
 export function deactivate() {

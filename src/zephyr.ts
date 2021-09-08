@@ -36,7 +36,9 @@ function west(args: string[], callback?: (err: ExecException | null, stdout: str
 		try {
 			return execSync(westExe + ' ' + args.join(' '), options).toString('utf-8');
 		} catch (e) {
-			return e.toString();
+			if (e instanceof Error) {
+				return e.toString();
+			}
 		}
 	}
 
@@ -102,7 +104,7 @@ export function boardConfFile(): vscode.Uri | undefined {
 
 export function setBoard(b: BoardTuple) {
 	board = b;
-	kEnv.setConfig('zephyr.board', b);
+	// kEnv.setConfig('zephyr.board', b);
 	kEnv.update();
 }
 
@@ -388,7 +390,7 @@ export async function setWest(westUri: string, env?: typeof process.env): Promis
 
 	if (westUri !== westExe) {
 		westExe = westUri;
-		await kEnv.setConfig("zephyr.west", westExe);
+		// await kEnv.setConfig("zephyr.west", westExe);
 	}
 }
 
