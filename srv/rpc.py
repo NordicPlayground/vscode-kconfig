@@ -5,6 +5,12 @@ import json
 import enum
 from datetime import datetime
 
+"""
+Remote procedure call implementation.
+
+This file implements a JSON remote procedure call server, for JSON-RPC version 2.0.
+"""
+
 JSONRPC = '2.0'
 
 def encode_json(o):

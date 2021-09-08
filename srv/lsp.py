@@ -4,6 +4,13 @@ import enum
 from typing import Any, Callable, Optional, List, Dict
 from rpc import RPCServer, RPCResponse, handler
 
+"""
+Language Server implementation.
+
+This file implements the language server protocol, including a document store,
+a language server and all the required surrounding classes.
+"""
+
 class Uri:
 	"""
 		Uniform Resource Identifier implementation.
