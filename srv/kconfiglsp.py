@@ -5,7 +5,8 @@ import os
 import re
 import enum
 import argparse
-from lsp import CodeAction, CompletionItemKind, Diagnostic, FileChangeKind, InsertTextFormat, LSPServer, MarkupContent, Position, RPCError, Location, RPCNotification, Snippet, TextEdit, Uri, TextDocument, Range, handler, documentStore
+from rpc import handler, RPCError
+from lsp import CodeAction, CompletionItemKind, Diagnostic, FileChangeKind, InsertTextFormat, LSPServer, MarkupContent, Position, Location, Snippet, TextEdit, Uri, TextDocument, Range, documentStore
 
 VERSION = '1.0'
 
