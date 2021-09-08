@@ -1,5 +1,4 @@
 import inspect
-from io import TextIOWrapper
 import os
 from typing import Any, Callable, Union, Optional, List, Dict
 import sys
@@ -17,12 +16,41 @@ def encode_json(o):
 		return obj.__dict__
 	return json.dumps(o, default=encoder)
 
+
 class RPCMsg:
 	def __init__(self, jsonrpc: str):
+		"""
+		RPC message baseclass for all RPC communication between an RPC Server and an RPC Client.
+
+		Parameters
+		----------
+		jsonrpc: str
+			JSON-RPC version. Should normally be '2.0'
+		"""
 		self.jsonrpc = jsonrpc
+
 
 class RPCRequest(RPCMsg):
 	def __init__(self, id: Union[str, int], method: str, params: Union[object, list]=None):
+		"""
+		RPC request message.
+
+		Requests can be issued in both directions, and the receiver should issue an
+		RPC response message with a matching ID.
+
+		The request is a remote procedure call to the given method, which must be
+		implemented by the receiving side.
+
+		Parameters
+		----------
+		id: str | int
+			Unique request ID.
+		method: str
+			Remote method to invoke.
+		params: object, list, None
+			Optional parameters to pass to the invoked method.
+			The parameters are recursively encoded to json before being sent.
+		"""
 		super().__init__(JSONRPC)
 		self.id = id
 		self.method = method
@@ -30,6 +58,7 @@ class RPCRequest(RPCMsg):
 
 
 class RPCErrorCode(enum.IntEnum):
+	"""Standard error codes for RPC messages"""
 	PARSE_ERROR = -32700
 	INVALID_REQUEST = -32600
 	METHOD_NOT_FOUND = -32601
@@ -40,8 +69,25 @@ class RPCErrorCode(enum.IntEnum):
 	CONTENT_MODIFIED = -32801
 	REQUEST_CANCELLED = -32800
 
+
 class RPCError(Exception):
 	def __init__(self, code: int, message: str, data=None):
+		"""
+		RPC Error exception type.
+
+		RPCErrors may be raised by request handlers to notify the other party that the
+		request failed. The error will be caught by the server class and encoded as an
+		RPCResponse for the current RPCRequest.
+
+		Parameters
+		----------
+		code: int
+			Error code. Either a standard RPCErrorCode, or an application specific error.
+		message: str
+			Human readable error message. Will be presented in the UI.
+		data: Any
+			Error data.
+		"""
 		super().__init__()
 		self.code = code
 		self.message = message
@@ -54,27 +100,102 @@ class RPCError(Exception):
 	def create(obj):
 		return RPCError(obj['code'], obj['message'], obj.get('data'))
 
+
 class RPCResponse(RPCMsg):
 	def __init__(self, id: Optional[Union[str, int]]=None, result=None, error: RPCError=None):
+		"""
+		RPC Response message.
+
+		RPCResponses are issued as a response to an RPCRequest. The response's ID must match the
+		corresponding request ID.
+
+		Parameters
+		----------
+		id: str | int
+			ID of the request this response belongs to.
+		result: Any | None
+			Optional result of the request. Encoded as a json object.
+		error: Any | None
+			Optional RPCError associated with the response.
+		"""
 		super().__init__(JSONRPC)
 		self.id = id
 		self.result = result
 		self.error = error
 
+
 class RPCNotification(RPCMsg):
 	def __init__(self, method: str, params=None):
+		"""
+		RPC Notification message.
+
+		RPCNotifications are unacknowledged messages, that may be issued both by the server and the
+		client. Notifications do not contain an ID, and the receiver cannot provide a response to
+		the sender.
+
+		Parameters
+		----------
+		method: str
+			Remote method to invoke.
+		params: object, list, None
+			Optional parameters to pass to the invoked method.
+			The parameters are recursively encoded to json before being sent.
+		"""
 		super().__init__(JSONRPC)
 		self.method = method
 		self.params = params
 
+
 def handler(method):
+	"""
+	RPC message handler attribute.
+	Used to wrap handler methods in the RPCServer class:
+
+	@handler('textDocument/didChange')
+	def handle_did_change(self, params):
+		pass
+
+	Parameters
+	----------
+	method: str
+		The method implemented by the handler.
+	"""
 	def wrapper(f):
 		f._rsp_method = method
 		return f
 	return wrapper
 
+
 class RPCServer:
 	def __init__(self, istream=None, ostream=None):
+		"""
+		RPC Server class.
+
+		The RPC Server handles and issues RPC messages from an RPC Client.
+		Handlers should be registered as methods using the handler attribute
+		above.
+
+		The RPCServer should not be instantiated as-is, but rather be extended
+		by a class implementing all the requested handlers (such as LSPServer).
+		To start listening from the given IO streams, call the RPCServer
+		instance's loop() function. This will block until self.running is False.
+
+		Message handlers registerd with @handler() will process requests and
+		notifications. The RPCServer class will generate a response to request
+		messages based on the return value of the handler function.
+		To respond to a successfully processed request message, either return
+		from the handler function, or call RPCServer.rsp(). To return an error
+		from a handler function, either raise an exception or pass an error
+		to RPCServer.rsp(). Raise an RPCError exception to control the status
+		code and parameters of the error response.
+
+		Parameters
+		----------
+		istream: TextIO | None
+			Input stream for the incoming data, or sys.stdin if None.
+		ostream: TextIO | None
+			Output stream for the incoming data, or sys.stdout if None.
+		"""
 		self._send_stream = ostream if ostream else sys.stdout
 		self._recv_stream = istream if istream else sys.stdin
 		self._req = None
@@ -93,17 +214,20 @@ class RPCServer:
 			f.write('=' * 80 + '\n')
 
 	def dbg(self, *args):
+		"""Write a debug message to the log file."""
 		with open(self.log_file, 'a') as f:
 			for line in args:
 				f.write('dbg: ' + str(line) + '\n')
 
 	def log(self, *args):
+		"""Write an info message to the log file."""
 		sys.stderr.write('\n'.join(*args) + '\n')
 		with open(self.log_file, 'a') as f:
 			for line in args:
 				f.write('inf: ' + str(line) + '\n')
 
 	def _read_headers(self):
+		"""Internal: Read RPC headers from the input stream"""
 		length = 0
 		content_type = ''
 		while True:
@@ -123,6 +247,26 @@ class RPCServer:
 				content_type = value
 
 	def rsp(self, result=None, error: RPCError =None):
+		"""
+		Manually respond to the request currently being processed.
+		An RPCResponse object is created with the request's ID and the given result and error
+		parameters, and issued to the connected client.
+
+		Responses are normally created from the handlers return value, but may be issued
+		manually if the request is expected to take a long time, or returning the response
+		through the handler is somehow not practical. If a response has been sent, the
+		return code of the handler is ignored.
+
+		Note that attempting to send a response when handling a notification raises an
+		exception.
+
+		Parameters
+		----------
+		result: Any
+			Optional result of the current request.
+		error: RPCError | None
+			Optional
+		"""
 		if not self._req:
 			raise Exception('No command')
 
@@ -130,6 +274,28 @@ class RPCServer:
 		self._req = None
 
 	def req(self, method: str, params, handler: Optional[Callable[[RPCResponse], Any]] = None):
+		"""
+		Issue a request to the client.
+
+		Requests must specify a remote method to invoke, and may optionally supply parameters to
+		the method and a response handler.
+
+		The response handler will be called once the client issues an RPCResponse with an ID
+		matching the issued request. The request ID is generated from an internal counter.
+
+		Example::
+
+			self.req('remoteFunction', [1, 2, 3], lambda rsp: print(rsp.result))
+
+		Parameters
+		----------
+		method: str
+			Remote method to invoke.
+		params: Any
+			Optional parameters for the method.
+		handler: Callable
+			Optional response handler. Takes an RPCResponse object as its only parameter
+		"""
 		if handler:
 			self.requests[self.request_id] = handler
 		self._send(RPCRequest(self.request_id, method, params))
@@ -165,6 +331,7 @@ class RPCServer:
 		self._send_stream.flush()
 
 	def _recv(self) -> Union[RPCNotification, RPCRequest, RPCResponse]:
+		"""Internal: Receive an RPCMessage from the recv_stream"""
 		length, _ = self._read_headers()
 		data = self._recv_stream.read(length)
 		self.dbg('recv: {}'.format(data))
@@ -179,6 +346,14 @@ class RPCServer:
 		return RPCNotification(obj['method'], obj['params'])
 
 	def handle(self, msg: Union[RPCNotification, RPCRequest, RPCResponse]):
+		"""
+		Handle an RPCMessage.
+		Forwards the message to the appropriate message handler, or the registered response
+		handler, if the message is an RPCResponse.
+
+		For requests, the return value of the handler will be issued as a response, unless the
+		handler calls self.rsp() manually.
+		"""
 		if isinstance(msg, RPCResponse):
 			handler = self.requests.get(msg.id)
 			if handler:
@@ -214,6 +389,11 @@ class RPCServer:
 				self.rsp(None, RPCError(RPCErrorCode.METHOD_NOT_FOUND, 'Unknown method "{}"'.format(msg.method)))
 
 	def loop(self):
+		"""
+		Process messages in a loop.
+		The loop is only aborted if self.running is set to False,
+		or a keyboard interrupt is received.
+		"""
 		try:
 			while self.running:
 				self.handle(self._recv())
@@ -227,7 +407,35 @@ class RPCServer:
 
 
 class Uri:
+	"""
+		Uniform Resource Identifier implementation.
+		Implements https://datatracker.ietf.org/doc/html/rfc3986.
+		URIs are used to encode resources in the Language Server Protocol, such as files or URLs.
+
+		URIs are structured like this (example from IETF RFC3986)::
+
+		     foo://example.com:8042/over/there?name=ferret#nose
+		     \_/   \______________/\_________/ \_________/ \__/
+		      |           |            |            |        |
+			scheme     authority       path        query   fragment
+	"""
 	def __init__(self, scheme:str, authority:str='', path: str='', query:str='', fragment:str=''):
+		"""
+		Instantiate a new URI.
+
+		Parameters
+		----------
+		scheme: str
+			Scheme of the URI, e.g. https
+		authority: str
+			Authority of the URI, e.g. www.example.com
+		path: str,
+			Path of the URI, e.g. /some/file
+		query: str
+			Query of the URI, i.e. the part after ?
+		fragment: str
+			Fragment of the URI, i.e. the part after #
+		"""
 		self.scheme = scheme
 		self.authority = authority
 		self.path = path
@@ -254,10 +462,12 @@ class Uri:
 
 	@property
 	def basename(self):
+		"""The Uri's path's basename"""
 		return os.path.basename(self.path)
 
 	@staticmethod
 	def parse(raw: str):
+		"""Parse a URI from a raw string"""
 		def sanitize(part):
 			if part:
 				return re.sub(r'%([\da-fA-F]{2})', lambda x: chr(int(x.group(1), 16)), part)
@@ -273,6 +483,7 @@ class Uri:
 
 	@staticmethod
 	def file(path: str):
+		"""Convert a file path to a URI"""
 		return Uri('file', '', path)
 
 	def to_dict(self):
@@ -280,6 +491,9 @@ class Uri:
 
 
 class WorkspaceFolder:
+	"""
+	Workspace folder representation.
+	"""
 	def __init__(self, uri: Uri, name: str):
 		self.uri = uri
 		self.name = name
@@ -287,19 +501,46 @@ class WorkspaceFolder:
 
 class Position:
 	def __init__(self, line: int, character: int):
+		"""
+		TextDocument position, as a zero-indexed line and character.
+
+		Parameters
+		----------
+		line: int
+			Zero-indexed line. The first line in a file is line 0.
+		character: int
+			Zero-indexed character on a line. The first character on a line is character 0.
+		"""
 		self.line = line
 		self.character = character
 
 	@property
 	def range(self):
+		"""Range of this position, ie an empty range starting a this position."""
 		return Range(self, self)
 
 	def before(self, other):
+		"""
+		Check whether this position is before the other.
+
+		Parameters
+		----------
+		other: Position
+			Position to compare against.
+		"""
 		if not isinstance(other, Position):
 			return NotImplemented
 		return (self.line < other.line) or (self.line == other.line and self.character < other.character)
 
 	def after(self, other):
+		"""
+		Check whether this position is after the other.
+
+		Parameters
+		----------
+		other: Position
+			Position to compare against.
+		"""
 		if not isinstance(other, Position):
 			return NotImplemented
 		return (self.line > other.line) or (self.line == other.line and self.character > other.character)
@@ -314,27 +555,42 @@ class Position:
 
 	@staticmethod
 	def create(obj):
+		"""Create position from a serialized object."""
 		return Position(obj['line'], obj['character'])
 
 	@staticmethod
 	def start():
+		"""Get the start position in any file."""
 		return Position(0, 0)
 
 	@staticmethod
 	def end():
+		"""Get the end position in any file."""
 		return Position(999999, 999999)
 
 
 class Range:
 	def __init__(self, start: Position, end: Position):
+		"""
+		TextDocument range.
+
+		Parameters
+		----------
+		start: Position
+			The range's start position (inclusive)
+		end: Position
+			The range's end position (exclusive)
+		"""
 		self.start = start
 		self.end = end
 
 	def single_line(self):
+		"""Check whether this range starts and ends on the same line."""
 		return self.start.line == self.end.line
 
 	@staticmethod
 	def union(a, b):
+		"""Create a range that includes both ranges a and b."""
 		if not isinstance(a, Range) or not isinstance(b, Range):
 			return NotImplemented
 		return Range(
@@ -343,6 +599,7 @@ class Range:
 		)
 
 	def contains(self, pos_or_range):
+		"""Check whether this range fully contains the other Range or Position"""
 		if isinstance(pos_or_range, Position):
 			return (not pos_or_range.before(self.start)) and (not self.end.before(pos_or_range))
 		if isinstance(pos_or_range, Range):
@@ -350,6 +607,7 @@ class Range:
 		return NotImplemented
 
 	def overlaps(self, range):
+		"""Check whether this range overlaps with the other Range"""
 		if not isinstance(range, Range):
 			return NotImplemented
 		return not self.start.after(range.end) and not range.start.after(self.end)
@@ -365,10 +623,16 @@ class Range:
 
 	@staticmethod
 	def create(obj):
+		"""Create a range from a serialized object."""
 		return Range(Position.create(obj['start']), Position.create(obj['end']))
 
 
 class Location:
+	"""
+	TextDocument location.
+
+	A location object represents a unique text range in a resource in a workspace.
+	"""
 	def __init__(self, uri: Uri, range: Range):
 		self.uri = uri
 		self.range = range
@@ -378,12 +642,36 @@ class Location:
 
 	@staticmethod
 	def create(obj):
+		"""Create a location from a serialized object."""
 		return Location(Uri.parse(obj['uri']), Range.create(obj['range']))
 
 
 class TextDocument:
+	"""
+	Versioned text document.
+
+	A text document object that can be read, written and manipulated.
+
+	Text documents are normally maintained by a DocumentStore, which keeps them in sync
+	with the editor's representation of the document.
+	"""
+
 	UNKNOWN_VERSION=-1
 	def __init__(self, uri: Uri, text: str = None, languageId: str = None, version: int = None):
+		"""
+		Create a text document.
+
+		Parameters
+		----------
+		uri: URI
+			URI the document represents.
+		text: str | None
+			Optional initial content of the document.
+		languageId: str | None
+			Optional language identifier of the file, e.g. 'cpp'.
+		version: int | None
+			Initial version of the document.
+		"""
 		if version == None:
 			version = TextDocument.UNKNOWN_VERSION
 
@@ -394,17 +682,26 @@ class TextDocument:
 		self._inside = False
 		self._mode = None
 		self._scanpos = 0
-		self.lines = []
-		self._cbs = []
+		self.lines: List[str] = []
+		self._cbs: List[Callable] = []
 		self._virtual = self.uri.scheme != 'file'
 		self.loaded = False
 		if text:
 			self._set_text(text)
 
 	def on_change(self, cb):
+		"""
+		Register a callback to be called each time the document is changed.
+
+		Parameters
+		----------
+		cb: Callable
+			A callback that takes the document as a parameter.
+		"""
 		self._cbs.append(cb)
 
 	def _set_text(self, text):
+		"""Internal: Replace the contents of the document."""
 		self.lines = text.splitlines()
 		self.loaded = True
 		for cb in self._cbs:
@@ -412,19 +709,26 @@ class TextDocument:
 
 	@property
 	def text(self):
+		"""Full contents of the document, using newline as a line separator."""
 		return '\n'.join(self.lines) + '\n'
 
 	def line(self, index):
+		"""Get the contents of a line in the document. Does not include the line separator."""
 		if index < len(self.lines):
 			return self.lines[index]
 
 	def offset(self, pos: Position):
+		"""
+		Get the content offset of the given position, ie the number of characters the document contains
+		before the given position.
+		"""
 		if pos.line >= len(self.lines):
 			return len(self.text)
 		character = min(len(self.lines[pos.line])+1, pos.character)
 		return len(''.join([l + '\n' for l in self.lines[:pos.line]])) + character
 
 	def pos(self, offset: int):
+		"""Get the Position at the given content offset."""
 		content = self.text[:offset]
 		lines = content.splitlines()
 		if len(lines) == 0:
@@ -432,6 +736,7 @@ class TextDocument:
 		return Position(len(lines) - 1, len(lines[-1]))
 
 	def get(self, range: Range = None):
+		"""Get the text in the given range."""
 		if not range:
 			return self.text
 		text = self.text[self.offset(range.start):self.offset(range.end)]
@@ -442,11 +747,28 @@ class TextDocument:
 		return text
 
 	def word_at(self, pos: Position):
+		"""
+		Get the word occurring at the given position.
+		Words are strings containing the characters a-z, A-Z, 0-9 and _.
+		"""
 		line = self.line(pos.line)
 		if line:
-			return re.match(r'.*?(\w*)$', line[:pos.character])[1] + re.match(r'^\w*', line[pos.character:])[0]
+			before = re.match(r'.*?(\w*)$', line[:pos.character])
+			after = re.match(r'^\w*', line[pos.character:])
+			if before and after:
+				return before[1] + after[0]
 
 	def replace(self, text:str, range: Range = None):
+		"""
+		Replace a text range with new text.
+
+		Parameters
+		----------
+		text: str
+			The new text, or '' to just delete the given range.
+		range: Range | None
+			Range to replace, or None to replace the entire content of the document.
+		"""
 		# Ignore range if the file is empty:
 		if range and len(self.lines) > 0:
 			self._set_text(self.text[:self.offset(range.start)] + text + self.text[self.offset(range.end):])
@@ -455,6 +777,7 @@ class TextDocument:
 		self.modified = True
 
 	def _write_to_disk(self):
+		"""Internal: Store the file on disk. The document's must use the `file` scheme."""
 		if not self._virtual:
 			with open(self.uri.path, 'w') as f:
 				f.write(self.text)
@@ -462,6 +785,7 @@ class TextDocument:
 			self.version = TextDocument.UNKNOWN_VERSION
 
 	def _read_from_disk(self):
+		"""Internal: Restore the document from disk. The document's must use the `file` scheme."""
 		# will raise environment error if the file doesn't exist. This has to be caught outside:
 		with open(self.uri.path, 'r') as f:
 			text = f.read()
@@ -474,6 +798,7 @@ class TextDocument:
 
 	@staticmethod
 	def from_disk(uri: Uri):
+		"""Create a TextDocument by reading its contents from disk."""
 		with open(uri.path, 'r') as f:
 			doc = TextDocument(uri, f.read())
 		return doc
@@ -490,6 +815,10 @@ class TextDocument:
 			self.close()
 
 	class LineIterator:
+		"""
+		Iterator allowing users to go through the lines in the document
+		in a loop.
+		"""
 		def __init__(self, doc):
 			self._linenr = 0
 			self._lines = doc.lines
@@ -505,6 +834,7 @@ class TextDocument:
 		return TextDocument.LineIterator(self)
 
 	def open(self, mode='r'):
+		"""Open the document like a stream."""
 		if not mode in ['w', 'a', 'r']:
 			raise IOError('Unknown mode ' + str(mode))
 
@@ -519,11 +849,13 @@ class TextDocument:
 		return self
 
 	def close(self):
+		"""Close the document stream."""
 		if self._mode in ['a', 'w'] and self.modified:
 			self._write_to_disk()
 		self._mode = None
 
 	def write(self, text: str):
+		"""Write to the document stream."""
 		if not self._mode in ['a', 'w']:
 			raise IOError('Invalid mode for writing: ' + str(self._mode))
 		if not self.loaded:
@@ -536,10 +868,12 @@ class TextDocument:
 		self.version = TextDocument.UNKNOWN_VERSION
 
 	def writelines(self, lines):
+		"""Write lines to the document stream."""
 		for line in lines:
 			self.write(line)
 
 	def read(self, length=None):
+		"""Read from the document stream."""
 		if self._mode != 'r':
 			raise IOError('Invalid mode for reading: ' + str(self._mode))
 
@@ -555,6 +889,7 @@ class TextDocument:
 		return out
 
 	def readline(self, size=None):
+		"""Read a line from the document stream."""
 		if self._mode != 'r':
 			raise IOError('Invalid mode for reading: ' + str(self._mode))
 
@@ -567,6 +902,7 @@ class TextDocument:
 		return out
 
 	def readlines(self, _=None):
+		"""Read lines from the document stream."""
 		if self._mode != 'r':
 			raise IOError('Invalid mode for reading: ' + str(self._mode))
 
@@ -580,14 +916,17 @@ class TextDocument:
 		pass
 
 	def seek(self, offset):
+		"""Move the document stream"""
 		if self._mode == None:
 			raise IOError('Cannot seek on closed file')
 		self._scanpos = offset
 
 	def tell(self):
+		"""Get the stream position"""
 		return self._scanpos
 
 	def next(self):
+		"""Get the next line in the stream"""
 		if self._mode != 'r':
 			raise IOError('Invalid mode for reading: ' + str(self._mode))
 		if self._scanpos >= len(self.text):
@@ -596,30 +935,68 @@ class TextDocument:
 
 
 class DocProvider:
+	"""
+	Document provider class for getting virtual documents from non-file URI schemes.
+
+	Can be extended and registered in the DocumentStore to provide contents for URIs
+	that don't represent on-disk documents, such as webpages or virtual documents.
+	"""
 	def __init__(self, scheme: str):
+		"""
+		Create a new DocProvider.
+
+		Parameters
+		----------
+		scheme: str
+			URI scheme this provider provides documents for. E.g. http.
+		"""
 		self.scheme = scheme
 
-	def get(self, uri) -> Optional[TextDocument]:
+	def get(self, uri: Uri) -> Optional[TextDocument]:
+		"""Get the document with the given URI."""
 		return None
 
 	def exists(self, uri):
+		"""Check whether the document with the given URI exists."""
 		return self.get(uri) != None
 
+
 class DocumentStore:
+	"""
+	Document store class.
+	The document store maintains a set of open documents, and ensures that documents
+	with the same URI always resolve to the same document class.
+
+	The DocumentStore is instantiated as a singleton, which is referenced from the LSPServer.
+	"""
 	def __init__(self):
 		self.docs: Dict[str, TextDocument] = {}
 		self._providers: Dict[str, DocProvider] = {}
 
 	def open(self, doc: TextDocument):
+		"""Register the given document in the document store."""
 		self.docs[str(doc.uri)] = doc
 
 	def close(self, uri: Uri):
+		"""Close the given URI in the document store."""
 		pass
 
 	def provider(self, provider):
+		"""Register a DocumentProvider for a specific URI scheme."""
 		self._providers[provider.uri.scheme] = provider
 
 	def get(self, uri: Uri, create=True):
+		"""
+		Get the TextDocument object representing the given URI, or create one from disk,
+		if available.
+
+		Parameters
+		----------
+		uri: Uri
+			URI of the document to get.
+		create: boolean
+			Whether to create the document object if it doesn't already exist. Defaults to True.
+		"""
 		if uri.scheme in self._providers:
 			return self._providers[uri.scheme].get(uri)
 
@@ -642,14 +1019,9 @@ class DocumentStore:
 		self.docs[str(uri)] = doc
 		return doc
 
-	def create(self, uri: Uri):
-		doc = self.get(uri)
-		if doc:
-			return doc
-		return self._from_disk(uri)
-
 
 class CompletionItemKind(enum.IntEnum):
+	"""Completion item kinds, as defined by the LSP specification."""
 	TEXT = 1
 	METHOD = 2
 	FUNCTION = 3
@@ -676,41 +1048,62 @@ class CompletionItemKind(enum.IntEnum):
 	OPERATOR = 24
 	TYPE_PARAMETER = 25
 
+
 class InsertTextFormat(enum.IntEnum):
+	"""Text format, as defined by the LSP specification."""
 	PLAINTEXT = 1
 	SNIPPET = 2
 
+
 class DiagnosticRelatedInfo:
-	def __init__(self, loc, message):
+	"""Additional information attached to a Diagnostic item."""
+	def __init__(self, loc: Location, message: str):
 		self.loc = loc
 		self.message = message
 
 
 class TextEdit:
+	"""
+	A single text edit applied to a TextDocument.
+	TextEdits are used by CodeActions to manipulate TextDocuments,
+	e.g. to delete redundant assignments.
+
+	TextEdits are normally included in a larger WorkspaceEdit that defines the URI
+	the TextEdit should be applied to.
+	"""
 	def __init__(self, range: Range, new_text: str):
 		self.range = range
 		self.newText = new_text
 
 	@staticmethod
 	def remove(range: Range):
+		"""Create a TextEdit that just removes the text in the given range."""
 		return TextEdit(range, '')
 
 
 class WorkspaceEdit:
+	"""
+	Workspace edit.
+
+	A workspace edit is a collection of TextEdits applied to TextDocuments at various URIs.
+	"""
 	def __init__(self):
 		self.changes = {}
 
 	def add(self, uri: Uri, edit: TextEdit):
+		"""Add a TextEdit for a URI"""
 		key = str(uri)
 		if not key in self.changes:
 			self.changes[key] = []
 		self.changes[key].append(edit)
 
 	def has_changes(self):
+		"""Check whether this WorkspaceEdit will make any changes to URIs in the workspace."""
 		return len([c for c in self.changes.values() if len(c) > 0]) > 0
 
 
 class CodeActionKind(enum.Enum):
+	"""Kinds of CodeActions, as defined by the LSP specification."""
 	QUICKFIX = 'quickfix'
 	REFACTOR = 'refactor'
 	REFACTOREXTRACT = 'refactor.extract'
@@ -722,8 +1115,23 @@ class CodeActionKind(enum.Enum):
 
 
 class CodeAction:
+	"""
+	Code actions are text changes suggested to the user as quickfixes or automatic refactoring.
+	CodeActions typically appear in the editor as a small icon next to errors and warnings,
+	allowing them to quickly resolve trivial mistakes, such as typos or missing statements.
+	"""
+	def __init__(self, title: str, kind: CodeActionKind = CodeActionKind.QUICKFIX):
+		"""
+		Create a new CodeAction.
 
-	def __init__(self, title, kind: CodeActionKind = CodeActionKind.QUICKFIX):
+		Parameters
+		----------
+		title: str
+			Title of the action, as presented to the user in the UI. Typically describes the
+			change that will be applied, like 'Add missing semicolon'
+		kind: CodeActionKind
+			The kind of CodeAction this is. Defaults to QUICKFIX.
+		"""
 		self.title = title
 		self.kind = kind
 		self.command = None
@@ -748,22 +1156,40 @@ class CodeAction:
 
 
 class Diagnostic:
+	"""
+	Diagnostic message that appears in the UI as an error, a warning, some information or a hint.
+	"""
 	ERROR = 1
 	WARNING = 2
 	INFORMATION = 3
 	HINT = 4
 
 	class Tag(enum.IntEnum):
+		"""Diagnostic tag that can be added to Diagnostic.tags."""
 		UNNECESSARY = 1
 		DEPRECATED = 2
 
 	def __init__(self, message, range: Range, severity=WARNING):
+		"""
+		Parameters
+		----------
+		message: str
+			Message presented to the user, describing the issue.
+		range: Range
+			Text range the diagnostic applies to within a document.
+		severity: int
+			Severity of the diagnostic. Must be one of:
+			- Diagnostic.ERROR
+			- Diagnostic.WARNING (default)
+			- Diagnostic.INFORMATION
+			- Diagnostic.HINT
+		"""
 		self.message = message
 		self.range = range
 		self.severity = severity
-		self.tags = []
-		self.related_info = []
-		self.actions = []
+		self.tags: List[Diagnostic.Tag] = []
+		self.related_info: List[DiagnosticRelatedInfo] = []
+		self.actions: List[CodeAction] = []
 
 	@staticmethod
 	def severity_str(severity):
@@ -809,10 +1235,17 @@ class Diagnostic:
 	def hint(message, range):
 		return Diagnostic(message, range, Diagnostic.HINT)
 
+
 class MarkupContent:
+	"""
+	A string formatted using markdown or plaintext.
+	MarkupContent is used to present rich text in the UI, such as hover information or
+	symbol definitions.
+	"""
 	PLAINTEXT = 'plaintext'
 	MARKDOWN = 'markdown'
 	def __init__(self, value='', kind=None):
+		"""Create a new markup string"""
 		self.value = value
 		self.kind = kind if kind else MarkupContent.MARKDOWN
 
@@ -820,56 +1253,99 @@ class MarkupContent:
 		return re.sub(r'[`<>{}\[\]]', r'\\\0', text)
 
 	def add_text(self, text):
+		"""Add plaintext"""
 		if self.kind == MarkupContent.MARKDOWN:
 			self.value += self._sanitize(text)
 		else:
 			self.value += text
 
 	def add_markdown(self, md):
+		"""Add preformatted markdown. Will convert this to markdown content."""
 		if self.kind == MarkupContent.PLAINTEXT:
 			self.value = self._sanitize(self.value)
 			self.kind = MarkupContent.MARKDOWN
 		self.value += md
 
 	def paragraph(self):
+		"""Add a new paragraph."""
 		self.value += '\n\n'
 
 	def linebreak(self):
+		"""Add a linebreak."""
 		if self.kind == MarkupContent.MARKDOWN:
 			self.value += '\n\n'
 		else:
 			self.value += '\n'
 
 	def add_code(self, lang, code):
+		"""
+		Add a code snippet with the given language.
+		Will be presented as raw code in the UI.
+
+		Parameters
+		----------
+		lang: str
+			Markdown language identifier, like 'py' or 'cpp'
+		code: str
+			Raw code.
+		"""
 		self.add_markdown('\n```{}\n{}\n```\n'.format(lang, code))
 
 	def add_link(self, url, text=''):
+		"""Add a clickable link."""
 		self.add_markdown('[{}]({})'.format(text, url))
-
 
 	@staticmethod
 	def plaintext(value):
+		"""Create plaintext content."""
 		return MarkupContent(value, MarkupContent.PLAINTEXT)
 
 	@staticmethod
 	def markdown(value):
+		"""Create markdown content."""
 		return MarkupContent(value, MarkupContent.MARKDOWN)
 
 	@staticmethod
 	def code(lang, value):
+		"""
+		Create raw code content.
+
+		Parameters
+		----------
+		lang: str
+			Markdown language identifier, like 'py' or 'cpp'
+		code: str
+			Raw code.
+		"""
 		return MarkupContent.markdown('```{}\n{}\n```'.format(lang, value))
+
 
 NEXT_TABSTOP=-1
 
+
 class Snippet:
+	"""
+	Interactive snippet string, used to build boilerplate strings with user interaction.
+	See https://code.visualstudio.com/docs/editor/userdefinedsnippets.
+	"""
 	def __init__(self, value=''):
+		"""Create a new snippet with some raw text."""
 		self.text = value
 		self._next_tabstop = 1
 
 	def add_text(self, text):
+		"""Add raw text to the snippet."""
 		self.text += text
 
 	def add_tabstop(self, number=NEXT_TABSTOP):
+		"""
+		Add a point for the user to enter their own text.
+		The index of this tabstop can be overridden by setting number.
+		Tabstops with the same number are visited just once, but the inserted text will change in
+		all locations.
+		The cursor will be moved to tabstop 0 when the user is done editing. By default, this is at
+		the end of the snippet.
+		"""
 		if number == NEXT_TABSTOP:
 			number = self._next_tabstop
 
@@ -877,36 +1353,77 @@ class Snippet:
 		self._next_tabstop = number + 1
 
 	def add_placeholder(self, text, number=NEXT_TABSTOP):
+		"""
+		Add a point for the user to enter their own text, with some placeholder text there by default.
+		"""
 		if number == NEXT_TABSTOP:
 			number = self._next_tabstop
 		self.text += ''.join(['${', str(number), ':', text, '}'])
 		self._next_tabstop = number + 1
 
 	def add_choice(self, choices, number=NEXT_TABSTOP):
+		"""
+		Add a point for the user to insert text from a list of choices.
+		"""
 		if number == NEXT_TABSTOP:
 			number = self._next_tabstop
 		self.text += ''.join(['${', str(number), '|', ','.join(choices), '|}'])
 		self._next_tabstop = number + 1
 
+
 class FileChangeKind(enum.IntEnum):
+	"""File change event types, as defined by the LSP specification."""
 	CREATED = 1
 	CHANGED = 2
 	DELETED = 3
 
+
 documentStore = DocumentStore()
+"""Document store singleton"""
+
 
 class LSPServer(RPCServer):
+	"""
+	Language Server implementation.
+	Implements server lifecycle management, integration with the document store and document
+	watchers.
+	"""
 	def __init__(self, name: str, version: str, istream, ostream):
+		"""
+		Create a new language server instance. All language server instances will share the same
+		document store. Typically, the language server should not be instantiated, but rather be
+		extended by a class that implements actual language specific behavior.
+
+		Parameters
+		----------
+		name: str
+			Name of the language server. Will show up in the UI when the language server itself is
+			referenced, such as on crashes.
+		version: str
+			Version number of the language server. Can be used by the client to determine the feature set.
+		istream: TextIO | None
+			Input stream for the incoming data, or sys.stdin if None.
+		ostream: TextIO | None
+			Output stream for the incoming data, or sys.stdout if None.
+		"""
 		super().__init__(istream, ostream)
 		self.rootUri: str
 		self.workspaceFolders: List[WorkspaceFolder]
 		self.name = name
 		self.version = version
 		self.trace = 'off'
-		self.watchers = []
 		self.capability_id = 0
 
 	def capabilities(self):
+		"""
+		Get the language server capabilities.
+		See https://microsoft.github.io/language-server-protocol/specifications/specification-3-17/#serverCapabilities.
+		Automatically determines the feature set based on the implemented handlers, but can be
+		overridden to change change the reported feature set. Clients will only attempt to
+		use features that have been reported by the server.
+
+		Capabilities may also be registered asynchronously, see LSPServer.register_capability.
+		"""
 		def has(method):
 			return method in self.handlers
 
@@ -931,24 +1448,6 @@ class LSPServer(RPCServer):
 			'monikerProvider': has('textDocument/moniker'),
 			'workspaceSymbolProvider': has('workspace/symbol'),
 			'textDocumentSync': 2, # incremental
-			# 'signatureHelpProvider'
-			# 'codeLensProvider'
-			# 'documentLinkProvider'
-			# 'documentOnTypeFormattingProvider'
-			# 'executeCommandProvider'
-			# 'semanticTokensProvider'
-			# workspace?: {
-			# 	workspaceFolders?: WorkspaceFoldersServerCapabilities;
-			# 	fileOperations?: {
-			# 		didCreate?: FileOperationRegistrationOptions;
-			# 		willCreate?: FileOperationRegistrationOptions;
-			# 		didRename?: FileOperationRegistrationOptions;
-			# 		willRename?: FileOperationRegistrationOptions;
-			# 		didDelete?: FileOperationRegistrationOptions;
-			# 		willDelete?: FileOperationRegistrationOptions;
-			# 	}
-			# }
-			# experimental?: any;
 		}
 
 		if has('textDocument/completion'):
@@ -957,32 +1456,59 @@ class LSPServer(RPCServer):
 		return caps
 
 	def dbg(self, *args):
+		"""Write a debug message to the log file, and report it to the client, if tracing is enabled."""
 		super().dbg(*args)
 		if self.trace != 'off':
-			self.send(RPCNotification('$/logTrace', {'message': '\n'.join(args)}))
+			self.notify('$/logTrace', {'message': '\n'.join(args)})
 
 	def log(self, *args):
+		"""Write an info message to the log file, and report it to the client, if tracing is enabled."""
 		super().log(*args)
 		if self.trace == 'message':
-			self.send(RPCNotification('$/logTrace', {'message': '\n'.join(args)}))
+			self.notify('$/logTrace', {'message': '\n'.join(args)})
 
-	def register_capability(self, method: str, options, handler: Optional[Callable[[RPCResponse], Any]] = None):
+	def register_capability(self, method: str, options=None, handler: Optional[Callable[[RPCResponse], Any]] = None):
+		"""
+		Asynchronously register a capability to the client.
+
+		Example::
+
+			self.register_capability('hoverProvider', lambda rsp: self.supports_hover = not rsp.error)
+
+		Parameters
+		----------
+		method: str
+			Capability to register. Matches the capability name in LSPServer.capabilities().
+		options: Any
+			Options for the capability. See the LSP specification.
+		handler: Callable
+			Optional callback for the response message from the client.
+		"""
 		self.capability_id += 1
 		capability = {'id': str(self.capability_id), 'method': method, 'registerOptions': options}
 		self.req('client/registerCapability', {'registrations': [capability]}, handler)
 		return str(self.capability_id)
 
 	def watch_files(self, pattern: str, created=True, changed=True, deleted=True):
+		"""
+		Enable a file watcher for the given glob pattern.
+		File watchers will notify the LSPServer if any changes occurred to any file matching the
+		pattern. There is no way to detect which file matcher was triggered, so all file changes
+		are reported to the common LSPServer.on_file_change() function, which should be overridden
+		by extending classes.
+		"""
 		watcher = {
 			'globPattern': pattern,
 			'kind': (created * 1) + (changed * 2) + (deleted * 4),
 		}
-		self.watchers.append(watcher)
 		self.register_capability('workspace/didChangeWatchedFiles', {'watchers': [watcher]})
 
 	def on_file_change(self, uri: Uri, kind: FileChangeKind):
 		pass # Override in extending class
 
+	############################
+	# Server lifecycle handlers:
+	############################
 	@handler('$/setTrace')
 	def handle_set_trace(self, params):
 		self.trace = params['value']
@@ -1015,6 +1541,9 @@ class LSPServer(RPCServer):
 			}
 		}
 
+	################################
+	# Text document synchronization:
+	################################
 	@handler('textDocument/didOpen')
 	def handle_open(self, params):
 		doc = params['textDocument']
