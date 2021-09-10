@@ -143,7 +143,8 @@ export async function addBuild(uri: vscode.Uri) {
 	const boardDir = cache['BOARD_DIR'][0];
 	const arch = path.basename(path.dirname(boardDir));
 
-	const appKconfig = path.join(cache['APPLICATION_SOURCE_DIR'][0], 'Kconfig');
+    const appDir = cache['APPLICATION_SOURCE_DIR'][0];
+	const appKconfig = path.join(appDir, 'Kconfig');
 	const zephyrKconfig = path.join(cache['ZEPHYR_BASE'][0], 'Kconfig');
 
 	let root: string;
@@ -194,6 +195,6 @@ export async function addBuild(uri: vscode.Uri) {
         uri: uri.toString(),
 		root,
 		env,
-		conf: cache['CACHED_CONF_FILE'] ?? [],
+		conf: cache['CACHED_CONF_FILE']?.map(file => path.resolve(appDir, file)) ?? [],
 	} as AddBuildParams);
 }
