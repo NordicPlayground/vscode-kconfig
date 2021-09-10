@@ -982,11 +982,19 @@ class KconfigServer(LSPServer):
 
 		pos = Position.create(params['position'])
 		line = doc.line(pos.line)
+		show_non_visible = False
 		if line:
 			prefix = line[:pos.character]
 			word = prefix.lstrip()
-			if len(word) > 0 and not word.startswith('CONFIG_'):
-				word = 'CONFIG_' + word
+
+			if len(word) > 0:
+				# Ensure word starts with 'CONFIG_'. By using commonprefix, we can also detect and correct
+				# partial matches:
+				common = os.path.commonprefix([word, 'CONFIG_'])
+				if len(common) < len('CONFIG_'):
+					word = 'CONFIG_' + word[len(common):]
+				show_non_visible = True
+
 		else:
 			word = None
 
@@ -1017,10 +1025,16 @@ class KconfigServer(LSPServer):
 				'insertText': insert_text(sym),
 				'insertTextFormat': InsertTextFormat.SNIPPET
 			}
-			for sym in ctx.symbols(word) if sym.visibility or word]
+			for sym in ctx.symbols(word) if sym.visibility or show_non_visible] # Only show visible symbols on completion without a prefix
 
 		self.dbg('Filter: "{}" Total symbols: {} Results: {}'.format(word, len(ctx._kconfig.syms.items()), len(items)))
-		return items
+		# When performing a completion request without any prefix, we'll only show the visible symbols.
+		# Since we want to start showing users non-visible symbols when they start typing, we need
+		# to mark the non-prefixed completion list incomplete to make the client re-requests a new list
+		return {
+			'isIncomplete': not show_non_visible,
+			'items': items
+		}
 
 	@handler('textDocument/definition')
 	def handle_definition(self, params):
