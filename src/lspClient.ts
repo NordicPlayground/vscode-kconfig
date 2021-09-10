@@ -67,6 +67,10 @@ export async function activate(ctx: vscode.ExtensionContext) {
 	);
 }
 
+export function setMainBuild(uri?: vscode.Uri) {
+    client.sendNotification('kconfig/setMainBuild', {uri: uri?.toString() ?? ''});
+}
+
 interface AddBuildParams {
     root: string;
     env: typeof process.env;
@@ -128,7 +132,7 @@ function parseZephyrModules(uri: vscode.Uri): Promise<ZephyrModule[]> {
 }
 
 interface BuildResponse {
-    id: number;
+    id: string;
 }
 
 export async function addBuild(uri: vscode.Uri) {
@@ -187,6 +191,7 @@ export async function addBuild(uri: vscode.Uri) {
 	});
 
 	return client.sendRequest<BuildResponse>('kconfig/addBuild', {
+        uri: uri.toString(),
 		root,
 		env,
 		conf: cache['CACHED_CONF_FILE'] ?? [],

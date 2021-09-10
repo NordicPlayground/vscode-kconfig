@@ -368,14 +368,14 @@ class BoardConf:
 
 
 class KconfigContext:
-	def __init__(self, root, conf_files: List[ConfFile]=[], env={}, id=0):
+	def __init__(self, uri: Uri, root, conf_files: List[ConfFile]=[], env={}):
 		"""A single instance of a kconfig compilation.
 		Represents one configuration of one application, equalling a single
 		build in Zephyr.
 		"""
+		self.uri = uri
 		self.env = env
 		self.conf_files = conf_files
-		self.id = id
 		self.board = BoardConf(env['BOARD'], env['ARCH'], env['BOARD_DIR'])
 		self.version = 0
 		self._root = root
@@ -740,9 +740,9 @@ class KconfigServer(LSPServer):
 		This will keep running until KconfigServer.running is false.
 		"""
 		super().__init__('zephyr-kconfig', VERSION, istream, ostream)
-		self._next_id = 0
 		self.last_ctx = None
-		self.ctx: Dict[int, KconfigContext] = {}
+		self.main_uri = None
+		self.ctx: Dict[str, KconfigContext] = {}
 		self.dbg('Python version: ' + sys.version)
 
 	def publish_diags(self, uri, diags: List[Diagnostic]):
@@ -773,21 +773,16 @@ class KconfigServer(LSPServer):
 		for uri, diags in ctx.kconfig_diags.items():
 			self.publish_diags(uri, diags)
 
-	def create_ctx(self, root, conf_files, env):
+	def create_ctx(self, uri: Uri, root, conf_files, env):
 		"""
 		Create a Kconfig Context with the given parameters.
 
 		A context represents a single build directory.
 		"""
-		self.dbg('Creating context...')
-		id = self._next_id
-		ctx = KconfigContext(root, conf_files, env, id)
+		self.dbg(f'Creating context {uri}')
+		ctx = KconfigContext(uri, root, conf_files, env)
 
-		self.refresh_ctx(ctx)
-
-		self.ctx[id] = ctx
-		self._next_id += 1
-		self.last_ctx = ctx
+		self.ctx[str(uri)] = ctx
 		return ctx
 
 	def best_ctx(self, uri: Uri):
@@ -797,6 +792,12 @@ class KconfigServer(LSPServer):
 		Keeps track of the currently referenced context, and will prefer
 		this if it owns the given URI.
 		"""
+		if self.main_uri:
+			ctx = self.ctx.get(str(self.main_uri))
+			if ctx and ctx.has_file(uri):
+				self.last_ctx = ctx
+				return ctx
+
 		if self.last_ctx and self.last_ctx.has_file(uri):
 			return self.last_ctx
 
@@ -826,8 +827,27 @@ class KconfigServer(LSPServer):
 
 	@handler('kconfig/addBuild')
 	def handle_add_build(self, params):
-		ctx = self.create_ctx(params['root'], [ConfFile(Uri.file(f)) for f in params['conf']], params['env'])
-		return {'id': ctx.id}
+		uri = Uri.parse(params['uri'])
+		if uri:
+			confFiles = [ConfFile(Uri.file(f)) for f in params['conf']]
+			ctx = self.create_ctx(uri, params['root'], confFiles, params['env'])
+
+			# This is the active build. Parse it right away:
+			if uri == self.main_uri:
+				self.last_ctx = ctx
+				self.refresh_ctx(ctx)
+			return {'id': ctx.uri}
+
+	@handler('kconfig/setMainBuild')
+	def handle_set_build(self, params):
+		uri = Uri.parse(params['uri'])
+		self.main_uri = uri
+		ctx = self.ctx.get(str(self.main_uri))
+		if ctx:
+			self.dbg(f'Main build: {uri}')
+			self.dbg('\t' + "\n\t".join([str(f) for f in ctx.conf_files]))
+			self.last_ctx = ctx
+			self.refresh_ctx(ctx)
 
 	@handler('kconfig/search')
 	def handle_search(self, params):
