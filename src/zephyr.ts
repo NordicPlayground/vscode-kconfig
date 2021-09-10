@@ -311,7 +311,6 @@ function getZephyrBase(): string | undefined {
 export async function setZephyrBase(uri: vscode.Uri): Promise<void> {
 	if (uri.fsPath !== zephyrRoot) {
 		zephyrRoot = uri.fsPath;
-		await kEnv.setConfig("zephyr.base", zephyrRoot);
 	}
 }
 
