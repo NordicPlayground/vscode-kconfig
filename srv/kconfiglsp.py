@@ -87,15 +87,28 @@ class Kconfig(kconfiglib.Kconfig):
 			raise kconfiglib.KconfigError(f'Attempting to open directory {filename} as file @{self.filename}:{self.linenr}')
 		return super()._open(filename, mode)
 
-	def _warn(self, msg, filename=None, linenr=None):
+	def _warn(self, msg: str, filename=None, linenr=None):
 		super()._warn(msg, filename, linenr)
 		if not filename:
 			filename = ''
 		if not linenr:
 			linenr = 1
 
+		ignored_diags = [
+			'set more than once.'
+		]
+
+		if len([ignore for ignore in ignored_diags if ignore in msg]) > 0:
+			# Ignore this diagnostic. It is either too verbose, or already covered by some
+			# manual check.
+			return
+
 		if not filename in self.diags:
 			self.diags[filename] = []
+
+		# Strip out potentially very long definition references.
+		# They're redundant, since the user can ctrl+click on the symbol to interactively find them.
+		msg = re.sub(r'\s*\(defined at.*?\)\s*', ' ', msg)
 
 		self.diags[filename].append(Diagnostic(msg, Position(int(linenr-1), 0).range, KCONFIG_WARN_LVL))
 
@@ -264,6 +277,11 @@ class ConfEntry:
 		"""Range of the name text, ie CONFIG_ABC"""
 		return self.loc.range
 
+	def __eq__(self, o: object) -> bool:
+		if not isinstance(o, ConfEntry):
+			return False
+		return self.loc == o.loc
+
 	@property
 	def full_range(self):
 		"""Range of the entire assignment, ie CONFIG_ABC=y"""
@@ -353,6 +371,9 @@ class ConfFile:
 		"""Find all ConfEntries that configure a symbol with the given name."""
 		return [entry for entry in self.entries() if entry.name == name]
 
+	def __repr__(self):
+		return str(self.uri)
+
 
 class BoardConf:
 	def __init__(self, name, arch, dir):
@@ -364,7 +385,7 @@ class BoardConf:
 	@property
 	def conf_file(self):
 		"""Get the path of the conf file that must be included when building with this board"""
-		return os.path.join(self.dir, self.name + '_defconfig')
+		return ConfFile(Uri.file(os.path.join(self.dir, self.name + '_defconfig')))
 
 
 class KconfigContext:
@@ -561,6 +582,13 @@ class KconfigContext:
 		"""Search for a symbol with a specific name. Returns a list of symbols as SymbolItems."""
 		return map(_symbolitem, self.symbols(query))
 
+	def all_entries(self) -> List[ConfEntry]:
+		files = [self.board.conf_file] + self.conf_files
+		entries = []
+		for file in files:
+			entries.extend(file.entries())
+		return entries
+
 	# Link checks for config file entries:
 
 	def check_type(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
@@ -659,6 +687,21 @@ class KconfigContext:
 			file.diags.append(diag)
 			return True
 
+	def check_multiple_assignments(self, file: ConfFile, entry: ConfEntry, all_entries: List[ConfEntry]):
+		matching = [e for e in all_entries if e.name == entry.name]
+		if len(matching) > 1 and matching[0] != entry:
+			existing = matching[0]
+			diag = Diagnostic.warn(f'{entry.name} set more than once. Old value "{existing.value}", new value "{entry.value}".', entry.full_range)
+			diag.related_info = [DiagnosticRelatedInfo(
+				e.loc, f'Already set to "{e.value}" here') for e in matching if e != entry]
+			if existing.value == entry.value:
+				diag.mark_unnecessary()
+				diag.severity = Diagnostic.HINT
+				diag.add_action(entry.remove('Remove redundant entry'))
+			file.diags.append(diag)
+			return True
+
+
 	def lint(self):
 		"""
 		Run a set of checks on the contents of the conf files.
@@ -668,6 +711,7 @@ class KconfigContext:
 		generate_config.py that show up during the build, as these aren't
 		part of kconfiglib.
 		"""
+		all_entries = self.all_entries()
 		for file in self.conf_files:
 			entries = file.entries()
 			for entry in entries:
@@ -683,6 +727,8 @@ class KconfigContext:
 				if self.check_visibility(file, entry, sym):
 					continue
 				if self.check_defaults(file, entry, sym):
+					continue
+				if self.check_multiple_assignments(file, entry, all_entries):
 					continue
 
 	def load_config(self):
