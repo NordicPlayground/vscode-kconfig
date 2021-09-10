@@ -6,7 +6,7 @@ import re
 import enum
 import argparse
 from rpc import handler, RPCError
-from lsp import CodeAction, CompletionItemKind, Diagnostic, FileChangeKind, InsertTextFormat, LSPServer, MarkupContent, Position, Location, Snippet, TextEdit, Uri, TextDocument, Range, documentStore
+from lsp import CodeAction, CompletionItemKind, Diagnostic, DiagnosticRelatedInfo, DocumentSymbol, FileChangeKind, InsertTextFormat, LSPServer, MarkupContent, Position, Location, Snippet, SymbolKind, TextEdit, Uri, TextDocument, Range, documentStore
 
 VERSION = '1.0'
 
@@ -1046,6 +1046,29 @@ class KconfigServer(LSPServer):
 			contents.add_text(help)
 
 		return {'contents': contents}
+
+	@handler('textDocument/documentSymbol')
+	def handle_doc_symbols(self, params):
+		uri = Uri.parse(params['textDocument']['uri'])
+		ctx = self.best_ctx(uri)
+		if not ctx:
+			return
+
+		file = ctx.conf_file(uri)
+		if not file:
+			return
+
+		def doc_sym(e: ConfEntry):
+			sym = ctx.get(e.name)
+			prompt = ''
+			if sym:
+				for node in sym.nodes:
+					if node.prompt:
+						prompt = node.prompt[0]
+
+			return DocumentSymbol('CONFIG_' + e.name, SymbolKind.PROPERTY, e.full_range, prompt)
+
+		return [doc_sym(e) for e in file.entries()]
 
 	@handler('textDocument/codeAction')
 	def handle_code_action(self, params):

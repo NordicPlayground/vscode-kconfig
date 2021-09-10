@@ -659,6 +659,36 @@ class CompletionItemKind(enum.IntEnum):
 	TYPE_PARAMETER = 25
 
 
+class SymbolKind(enum.IntEnum):
+	"""Symbol kinds, as defined by the LSP specification"""
+	FILE = 1
+	MODULE = 2
+	NAMESPACE = 3
+	PACKAGE = 4
+	CLASS = 5
+	METHOD = 6
+	PROPERTY = 7
+	FIELD = 8
+	CONSTRUCTOR = 9
+	ENUM = 10
+	INTERFACE = 11
+	FUNCTION = 12
+	VARIABLE = 13
+	CONSTANT = 14
+	STRING = 15
+	NUMBER = 16
+	BOOLEAN = 17
+	ARRAY = 18
+	OBJECT = 19
+	KEY = 20
+	NULL = 21
+	ENUM_MEMBER = 22
+	STRUCT = 23
+	EVENT = 24
+	OPERATOR = 25
+	TYPE_PARAMETER = 26
+
+
 class InsertTextFormat(enum.IntEnum):
 	"""Text format, as defined by the LSP specification."""
 	PLAINTEXT = 1
@@ -844,6 +874,20 @@ class Diagnostic:
 	@staticmethod
 	def hint(message, range):
 		return Diagnostic(message, range, Diagnostic.HINT)
+
+
+class DocumentSymbol:
+	"""
+	Document symbols represent a single language construct, like a variable, a function or a symbol.
+	Document symbols show up in the breadcrumbs view and can be searched for by the user.
+	"""
+	def __init__(self, name: str, kind: SymbolKind, range: Range, detail=''):
+		self.name = name
+		self.kind = kind
+		self.range = range
+		self.detail = detail
+		self.selectionRange = range
+		self.children: List[DocumentSymbol] = []
 
 
 class MarkupContent:
