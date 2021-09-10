@@ -159,13 +159,14 @@ export async function addBuild(uri: vscode.Uri) {
 	const env: typeof process.env = {
 		...westEnv,
 		ZEPHYR_BASE: cache['ZEPHYR_BASE']?.[0],
-		ZEPHYR_TOOLCHAIN_VARIANT: cache['ZE_HYR_TOOLCHAIN_VARIANT']?.[0],
+		ZEPHYR_TOOLCHAIN_VARIANT: cache['ZEPHYR_TOOLCHAIN_VARIANT']?.[0],
 		PYTHON_EXECUTABLE: cache['PYTHON_PREFER_EXECUTABLE']?.[0],
 		srctree: cache['ZEPHYR_BASE']?.[0],
 		// KERNELVERSION:
 		KCONFIG_CONFIG: vscode.Uri.joinPath(uri, 'zephyr', '.config').fsPath,
 		ARCH: arch,
 		ARCH_DIR: path.join(cache['ZEPHYR_BASE'][0], 'arch'),
+		BOARD: board,
 		BOARD_DIR: boardDir,
 		KCONFIG_BINARY_DIR: vscode.Uri.joinPath(uri, 'Kconfig').fsPath,
 		TOOLCHAIN_KCONFIG_DIR: path.join(
