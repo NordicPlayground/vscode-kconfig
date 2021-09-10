@@ -668,7 +668,7 @@ class InsertTextFormat(enum.IntEnum):
 class DiagnosticRelatedInfo:
 	"""Additional information attached to a Diagnostic item."""
 	def __init__(self, loc: Location, message: str):
-		self.loc = loc
+		self.location = loc
 		self.message = message
 
 
