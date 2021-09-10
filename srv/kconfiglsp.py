@@ -819,6 +819,9 @@ class KconfigServer(LSPServer):
 			self.dbg('No context for {}'.format(uri.path))
 			return
 
+		if not ctx.valid:
+			self.refresh_ctx(ctx)
+
 		return ctx.symbol_at(uri, Position.create(params['position']))
 
 	@handler('initialized')
@@ -908,6 +911,9 @@ class KconfigServer(LSPServer):
 			self.dbg('No context for {}'.format(uri.path))
 			return
 
+		if not ctx.valid:
+			self.refresh_ctx(ctx)
+
 		doc = documentStore.get(uri)
 		if not doc:
 			self.dbg('Unknown document')
@@ -994,6 +1000,9 @@ class KconfigServer(LSPServer):
 		if not ctx:
 			self.dbg('No context for {}'.format(uri.path))
 			return
+
+		if not ctx.valid:
+			self.refresh_ctx(ctx)
 
 		conf = ctx.conf_file(uri)
 		if not conf:
