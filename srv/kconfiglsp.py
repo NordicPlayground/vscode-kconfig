@@ -450,9 +450,9 @@ class KconfigContext:
 		if self._kconfig:
 			self._kconfig.valid = False
 
-	def has_file(self, uri):
+	def has_file(self, uri: Uri):
 		"""Check whether the given URI represents a conf file this context uses. Does not check board files."""
-		return any([(file.doc.uri == uri) for file in self.conf_files]) or self.board.conf_file == uri.path
+		return any([(file.uri == uri) for file in self.conf_files if file.doc]) or self.board.conf_file.uri == uri
 
 	def _node_id(self, node: kconfiglib.MenuNode):
 		"""Encode a unique ID string for the given menu node"""
@@ -534,7 +534,7 @@ class KconfigContext:
 
 	def conf_file(self, uri):
 		"""Get the config file with the given URI, if any."""
-		return next((file for file in self.conf_files if file.doc.uri == uri), None)
+		return next((file for file in [self.board.conf_file] + self.conf_files if file.uri == uri), None)
 
 	def diags(self, uri):
 		"""Get the diagnostics for the conf file with the given URI"""
@@ -691,7 +691,7 @@ class KconfigContext:
 			pass
 
 		try:
-			self._kconfig.load_config(self.board.conf_file, replace=True)
+			self._kconfig.load_config(self.board.conf_file.uri.path, replace=True)
 
 			for file in self.conf_files:
 				self._kconfig.load_config(file.uri.path, replace=False)
@@ -766,7 +766,7 @@ class KconfigServer(LSPServer):
 			self.dbg('Done. {} diags, {} warnings'.format(sum([len(file.diags) for file in ctx.conf_files]), len(ctx._kconfig.warnings)))
 
 		for conf in ctx.conf_files:
-			self.publish_diags(conf.doc.uri, conf.diags)
+			self.publish_diags(conf.uri, conf.diags)
 
 		self.publish_diags(Uri.file('command-line'), ctx.cmd_diags)
 
