@@ -219,7 +219,7 @@ class Range:
 
 	def __eq__(self, other):
 		if not isinstance(other, Range):
-            		return NotImplemented
+			return NotImplemented
 
 		return self.start == other.start and self.end == other.end
 
@@ -244,6 +244,11 @@ class Location:
 
 	def __repr__(self):
 		return '{}: {}'.format(self.uri, self.range)
+
+	def __eq__(self, other):
+		if not isinstance(other, Location):
+			return NotImplemented
+		return self.uri == other.uri and self.range == other.range
 
 	@staticmethod
 	def create(obj):
