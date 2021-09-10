@@ -591,6 +591,11 @@ class KconfigContext:
 
 	# Link checks for config file entries:
 
+	def check_undefined(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+		if sym.type == kconfiglib.UNKNOWN:
+			file.diags.append(Diagnostic.err(f'Undefined symbol CONFIG_{sym.name}', entry.full_range))
+			return True
+
 	def check_type(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
 		"""Check that the configured value has the right type."""
 		if kconfiglib.TYPE_TO_STR[sym.type] != entry.type:
@@ -620,6 +625,8 @@ class KconfigContext:
 
 		actions = []
 		if user_value == sym.str_value:
+			if user_value == 'y':
+				return
 			msg = f'CONFIG_{sym.name} was already disabled.'
 			severity = Diagnostic.HINT
 		elif len(sym.str_value):
@@ -672,7 +679,7 @@ class KconfigContext:
 
 	def check_visibility(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
 		"""Check whether the configuration entry actually can be set in config files."""
-		if sym.visibility == 0:
+		if not any(node.prompt for node in sym.nodes):
 			diag = Diagnostic.warn(f'Symbol CONFIG_{entry.name} cannot be set (has no prompt)', entry.full_range)
 			diag.add_action(entry.remove())
 			file.diags.append(diag)
@@ -719,7 +726,8 @@ class KconfigContext:
 					continue
 
 				sym: kconfiglib.Symbol = self._kconfig.syms[entry.name]
-
+				if self.check_undefined(file, entry, sym):
+					continue
 				if self.check_type(file, entry, sym):
 					continue
 				if self.check_assignment(file, entry, sym):
