@@ -880,6 +880,7 @@ class KconfigServer(LSPServer):
 	@handler('initialized')
 	def handle_initialized(self, params):
 		self.watch_files('**/Kconfig*')
+		self.watch_files('**/edt.pickle')
 
 	@handler('kconfig/addBuild')
 	def handle_add_build(self, params):
@@ -1105,6 +1106,12 @@ class KconfigServer(LSPServer):
 			for ctx in self.ctx.values():
 				ctx.invalidate()
 				self.dbg(f'Invalidated context because of change in {uri}')
+		elif uri.basename == 'edt.pickle':
+			# When the DTS context for this context changes, it should be invalidated:
+			changedCtx = self.ctx.get(str(Uri.file(uri.path.replace('/zephyr/edt.pickle', ''))))
+			if changedCtx:
+				changedCtx.invalidate()
+				self.dbg(f'Invalidated {changedCtx} due to dts changes.')
 
 
 def wait_for_debugger():
