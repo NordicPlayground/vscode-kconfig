@@ -51,19 +51,19 @@ export async function activate(ctx: vscode.ExtensionContext) {
     };
 
     client = new LanguageClient('Zephyr Kconfig', serverOptions, clientOptions);
-    await client.start();
+    client.start();
+
+    const caches = await vscode.workspace.findFiles(
+		'**/CMakeCache.txt',
+		'**/{twister,sanity}-out*'
+	);
 
     await client.onReady();
 
-    await addBuild(
-		vscode.Uri.joinPath(
-			vscode.workspace.workspaceFolders?.[0].uri ?? vscode.Uri.file(''),
-			'samples',
-			'bluetooth',
-			'mesh',
-			'light',
-			'build'
-		)
+    caches.map((cache) =>
+		addBuild(vscode.Uri.parse(path.dirname(cache.fsPath))).catch((err) => {
+			/* Ignore */
+		})
 	);
 }
 
