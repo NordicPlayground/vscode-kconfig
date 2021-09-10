@@ -65,6 +65,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
 			/* Ignore */
 		})
 	);
+
+    const cacheWatcher = vscode.workspace.createFileSystemWatcher('**/CMakeCache.txt');
+
+    cacheWatcher.onDidChange(addBuild);
+    cacheWatcher.onDidCreate(addBuild);
 }
 
 export function setMainBuild(uri?: vscode.Uri) {
