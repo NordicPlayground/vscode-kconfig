@@ -894,6 +894,13 @@ class KconfigServer(LSPServer):
 				self.refresh_ctx(ctx)
 			return {'id': ctx.uri}
 
+	@handler('kconfig/removeBuild')
+	def handle_remove_build(self, params):
+		uri = Uri.parse(params['uri'])
+		if self.ctx.get(str(uri)):
+			del self.ctx[str(uri)]
+			self.dbg('Deleted build ' + str(uri))
+
 	@handler('kconfig/setMainBuild')
 	def handle_set_build(self, params):
 		uri = Uri.parse(params['uri'])

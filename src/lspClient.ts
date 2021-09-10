@@ -70,6 +70,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
     cacheWatcher.onDidChange(addBuild);
     cacheWatcher.onDidCreate(addBuild);
+    cacheWatcher.onDidDelete(removeBuild);
 }
 
 export function setMainBuild(uri?: vscode.Uri) {
@@ -203,4 +204,8 @@ export async function addBuild(uri: vscode.Uri) {
 		env,
 		conf: cache['CACHED_CONF_FILE']?.map(file => path.resolve(appDir, file)) ?? [],
 	} as AddBuildParams);
+}
+
+export async function removeBuild(uri: vscode.Uri) {
+    client.sendNotification('kconfig/removeBuild', { uri: uri.toString() });
 }
