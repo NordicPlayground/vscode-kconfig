@@ -855,7 +855,10 @@ class MarkupContent:
 		self.kind = kind if kind else MarkupContent.MARKDOWN
 
 	def _sanitize(self, text):
-		return re.sub(r'[`<>{}\[\]]', r'\\\0', text)
+		text = re.sub(r'[`{}\[\]]', r'\\\0', text)
+		text = re.sub(r'<', '&lt;', text)
+		text = re.sub(r'>', '&gt;', text)
+		return text
 
 	def add_text(self, text):
 		"""Add plaintext"""
