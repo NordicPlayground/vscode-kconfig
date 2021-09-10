@@ -205,10 +205,6 @@ def _missing_deps(sym):
 	Get a list of the dependency expressions that fail for a symbol
 	"""
 	deps = kconfiglib.split_expr(sym.direct_dep, kconfiglib.AND)
-
-	if sym.type in (kconfiglib.BOOL, kconfiglib.TRISTATE):
-		return [dep for dep in deps if kconfiglib.expr_value(dep) == 0]
-	# string/int/hex
 	return [dep for dep in deps if kconfiglib.expr_value(dep) == 0]
 
 
@@ -778,6 +774,9 @@ class KconfigContext:
 		word = doc.word_at(pos)
 		if word and word.startswith('CONFIG_'):
 			return self.get(word[len('CONFIG_'):])
+
+	def __repr__(self):
+		return str(self.uri)
 
 class KconfigServer(LSPServer):
 
