@@ -2,7 +2,7 @@ import os
 import re
 import enum
 from typing import Any, Callable, Optional, List, Dict
-from rpc import RPCServer, RPCResponse, handler
+from .rpc import RPCServer, RPCResponse, handler
 
 """
 Language Server implementation.

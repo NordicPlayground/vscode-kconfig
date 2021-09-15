@@ -343,11 +343,11 @@ class RPCServer:
 
 		if 'id' in obj:
 			if 'method' in obj:
-				self._req = RPCRequest(obj['id'], obj['method'], obj['params'])
+				self._req = RPCRequest(obj['id'], obj['method'], obj.get('params'))
 				return self._req
 			return RPCResponse(obj['id'], obj.get('result'), RPCError.create(obj['error']) if 'error' in obj else None)
 
-		return RPCNotification(obj['method'], obj['params'])
+		return RPCNotification(obj['method'], obj.get('params'))
 
 	def handle(self, msg: Union[RPCNotification, RPCRequest, RPCResponse]):
 		"""
@@ -376,11 +376,9 @@ class RPCServer:
 			except RPCError as e:
 				self.dbg('Failed with error ' + str(e))
 				error = e
-				raise e
 			except Exception as e:
 				self.dbg('Failed with error ' + str(e))
 				error = RPCError(RPCErrorCode.UNKNOWN_ERROR_CODE, 'Exception: "{}"'.format(e.args))
-				raise e
 
 			end = datetime.now()
 			self.dbg('Handled in {} us'.format((end - start).microseconds))
