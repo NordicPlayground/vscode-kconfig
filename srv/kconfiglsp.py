@@ -1137,6 +1137,7 @@ def wait_for_debugger():
 def parse_args():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--debug', action='store_true', help='Enable debug mode. Will wait for a debugger to attach before starting the server.')
+	parser.add_argument('--log', action='store_true', help='Enable logging. Will write debug logs to an lsp.log file in the current working directory.')
 	return parser.parse_args()
 
 if __name__ == "__main__":
@@ -1146,4 +1147,7 @@ if __name__ == "__main__":
 		wait_for_debugger()
 
 	srv = KconfigServer()
+	if args.log:
+		srv.logging = True
+
 	srv.loop()
