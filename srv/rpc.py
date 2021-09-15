@@ -204,6 +204,7 @@ class RPCServer:
 		self._recv_stream = istream if istream else sys.stdin
 		self._req = None
 		self.log_file = 'lsp.log'
+		self.logging = False
 		self.running = True
 		self.handlers = {}
 		self.requests = {}
@@ -219,16 +220,18 @@ class RPCServer:
 
 	def dbg(self, *args):
 		"""Write a debug message to the log file."""
-		with open(self.log_file, 'a') as f:
-			for line in args:
-				f.write('dbg: ' + str(line) + '\n')
+		if self.logging:
+			with open(self.log_file, 'a') as f:
+				for line in args:
+					f.write('dbg: ' + str(line) + '\n')
 
 	def log(self, *args):
 		"""Write an info message to the log file."""
-		sys.stderr.write('\n'.join(*args) + '\n')
-		with open(self.log_file, 'a') as f:
-			for line in args:
-				f.write('inf: ' + str(line) + '\n')
+		if self.logging:
+			sys.stderr.write('\n'.join(*args) + '\n')
+			with open(self.log_file, 'a') as f:
+				for line in args:
+					f.write('inf: ' + str(line) + '\n')
 
 	def _read_headers(self):
 		"""Internal: Read RPC headers from the input stream"""
