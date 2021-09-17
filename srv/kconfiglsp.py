@@ -972,6 +972,9 @@ class KconfigServer(LSPServer):
 		if not ctx:
 			return
 
+		if not ctx.valid:
+			self.refresh_ctx(ctx)
+
 		show_all = 'options' in params and params['options'].get('showAll')
 
 		return ctx.get_menu(params.get('id'), show_all)
