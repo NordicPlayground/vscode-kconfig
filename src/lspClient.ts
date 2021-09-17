@@ -265,12 +265,16 @@ export async function getMenu(
 	uri?: vscode.Uri,
 	node?: string,
 	options: MenuOptions = {}
-): Promise<Menu> {
+): Promise<Menu | undefined> {
 	const rsp = await client.sendRequest<any>('kconfig/getMenu', {
 		ctx: uri?.toString(),
 		id: node,
 		options,
 	});
+    if (!rsp) {
+        return;
+    }
+
 	return <Menu>{
 		...(rsp as Menu),
 		items: rsp.items.map((item: any) => {
