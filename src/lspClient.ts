@@ -33,7 +33,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
     const serverOptions: ServerOptions = {
         command: '/usr/bin/python',
-        args: [path.resolve(ctx.extensionPath, 'srv', 'kconfiglsp.py')],
+        args: [path.resolve(ctx.extensionPath, 'srv', 'kconfiglsp.py'), '--log'],
         options: {
             cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
         },
@@ -208,4 +208,81 @@ export async function addBuild(uri: vscode.Uri) {
 
 export async function removeBuild(uri: vscode.Uri) {
     client.sendNotification('kconfig/removeBuild', { uri: uri.toString() });
+}
+
+interface GenericNode {
+    kind: 'symbol' | 'choice' | 'comment' | 'menu' | 'unknown';
+    visible: boolean;
+    loc?: vscode.Location;
+    isMenu: boolean;
+    hasChildren: boolean;
+    depth: number;
+    id: string;
+    prompt?: string;
+    help?: string;
+}
+
+interface SymbolNode extends GenericNode {
+    kind: 'symbol';
+    type: 'unknown' | 'bool' | 'tristate' | 'string' | 'int' | 'hex';
+    val: string;
+    name: string;
+    options: string[];
+    userValue: string;
+}
+
+interface CommentNode extends GenericNode {
+    kind: 'comment';
+}
+
+interface ChoiceNode extends GenericNode {
+    kind: 'choice';
+    val: string | undefined;
+}
+
+interface MenuNode extends GenericNode {
+    kind: 'menu';
+}
+
+interface UnknownNode extends GenericNode {
+    kind: 'unknown';
+}
+
+export type Node = SymbolNode | CommentNode | ChoiceNode | MenuNode | UnknownNode;
+
+export interface Menu {
+    name: string;
+    id: string;
+    items: Node[];
+}
+
+export interface MenuOptions {
+    allSymbols?: boolean;
+}
+
+export async function getMenu(uri?: vscode.Uri, node?: string, options: MenuOptions={}): Promise<Menu> {
+    const rsp = await client.sendRequest<any>('kconfig/getMenu', {
+		ctx: uri?.toString(),
+		id: node,
+		options,
+	});
+    return <Menu> {
+        ...rsp as Menu,
+        items: rsp.items.map((item: any) => {
+            return {
+				...(item as GenericNode),
+				// Convert URI from string to URI object:
+				loc: new vscode.Location(
+					vscode.Uri.parse(item.loc.uri),
+					new vscode.Range(
+						item.loc.range.start.line,
+						item.loc.range.start.character,
+						item.loc.range.end.line,
+						item.loc.range.end.character
+					)
+				),
+			};
+        })
+
+    }
 }

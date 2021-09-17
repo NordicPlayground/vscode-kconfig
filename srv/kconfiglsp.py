@@ -133,15 +133,38 @@ def _visible(node):
 
 def _children(node):
 	"""Get the child nodes of a given MenuNode"""
-	children = []
-	node = node.list
-	while node:
-		children.append(node)
-		if node.list and not node.is_menuconfig:
-			children.extend(_children(node))
-		node = node.next
+	def get_children(node):
+		children = []
+		node = node.list
+		while node:
+			children.append(node)
+			node = node.next
+		return children
 
-	return children
+	if isinstance(node.item, kconfiglib.Choice):
+		# Choices may be appended to in multiple locations.
+		# For ease of use, gather all options added to this choice, so users
+		# can see all valid option in every location.
+		# See menuconfig.py's _shown_nodes for additional info.
+		choice: kconfiglib.Choice = node.item
+		children = []
+		# Gather the current node's symbols first, so those are preferred when the symbol
+		# is added in multiple places:
+		symbols = {n.item for n in get_children(node) if isinstance(n, kconfiglib.Symbol)}
+
+		for choice_node in choice.nodes:
+			for child in get_children(choice_node):
+				if not isinstance(child, kconfiglib.Symbol):
+					children.append(child)
+				elif child.item not in symbols or choice_node is node:
+					children.append(child)
+					# Only show each symbol once:
+					symbols.add(child.item)
+
+		return children
+
+	return get_children(node)
+
 
 def _suboption_depth(node):
 	"""In menuconfig, nodes that aren't children of menuconfigs are rendered
@@ -153,17 +176,6 @@ def _suboption_depth(node):
 		depth += 1
 		parent = parent.parent
 	return depth
-
-def _val(sym: kconfiglib.Symbol):
-	"""Get the native python value of the given symbol."""
-	if sym.orig_type == kconfiglib.STRING:
-		return sym.str_value
-	if sym.orig_type in (kconfiglib.INT, kconfiglib.HEX):
-		return int(sym.str_value)
-	if sym.orig_type == kconfiglib.BOOL:
-		return sym.tri_value != 0
-	if sym.orig_type == kconfiglib.TRISTATE:
-		return sym.tri_value
 
 def _path(node):
 	"""Unique path ID of each node, allowing us to identify each node in a menu"""
@@ -209,24 +221,26 @@ def _missing_deps(sym):
 
 
 class KconfigMenu:
-	def __init__(self, ctx, node: kconfiglib.MenuNode, id):
+	def __init__(self, ctx, node: kconfiglib.MenuNode, id, show_all):
 		"""
 		A single level in a Menuconfig menu.
 		"""
 		self.ctx = ctx
 		self.node = node
 		self.id = id
+		self.show_all = show_all
 
 	@property
 	def name(self):
 		return str(self.node)
 
-	def _menuitem(self, node):
+	def _menuitem(self, node:kconfiglib.MenuNode):
 		sym = node.item
 		item = {
-			'visible': _visible(node),
-			'loc': Location(Uri.file(node.filename), Position(node.line, 0).range),
-			'is_menu': node.is_menuconfig,
+			'visible': _visible(node) != 0,
+			'loc': Location(Uri.file(os.path.join(self.ctx.env['ZEPHYR_BASE'], node.filename)), Position(node.linenr, 0).range),
+			'isMenu': node.is_menuconfig,
+			'hasChildren': node.list != None or isinstance(sym, kconfiglib.Choice),
 			'depth': _suboption_depth(node),
 			'id': self.ctx._node_id(node),
 		}
@@ -234,22 +248,33 @@ class KconfigMenu:
 		if node.prompt:
 			item['prompt'] = node.prompt[0]
 
-		if 'help' in node:
-			item['help'] = node['help']
+		if hasattr(node, 'help') and node.help:
+			item['help'] = node.help
 
 		if isinstance(sym, kconfiglib.Symbol):
 			item['type'] = kconfiglib.TYPE_TO_STR[sym.orig_type]
-			item['val'] = _val(sym)
+			item['val'] = sym.str_value
+			item['userValue'] = sym.user_value
 			item['name'] = sym.name
-			if 'assignable' in sym:
+			if hasattr(sym, 'assignable') and sym.assignable:
 				item['options'] = list(sym.assignable)
+			item['kind'] = 'symbol'
+		elif isinstance(sym, kconfiglib.Choice):
+			item['val'] = _prompt(sym.selection)
+			item['kind'] = 'choice'
+		elif sym == kconfiglib.COMMENT:
+			item['kind'] = 'comment'
+		elif sym == kconfiglib.MENU:
+			item['kind'] = 'menu'
+		else:
+			item['kind'] = 'unknown'
 
 		return item
 
 	@property
 	def items(self):
 		"""The list of MenuItems this menu presents."""
-		return [self._menuitem(node) for node in _children(self.node)]
+		return [self._menuitem(node) for node in _children(self.node) if self.show_all or (node.prompt and _visible(node))]
 
 	def to_dict(self):
 		return {
@@ -483,11 +508,11 @@ class KconfigContext:
 		elif isinstance(node.item, kconfiglib.Symbol):
 			parts = ['SYM', node.item.name, str(node.item.nodes.index(node))]
 		elif isinstance(node.item, kconfiglib.Choice):
-			parts = ['CHOICE', self._kconfig.choices.index(node)]
+			parts = ['CHOICE', str(self._kconfig.choices.index(node.item)), str(node.item.nodes.index(node))]
 		elif node.item == kconfiglib.COMMENT:
-			parts = ['COMMENT', self._kconfig.comments.index(node)]
+			parts = ['COMMENT', str(self._kconfig.comments.index(node))]
 		else:
-			parts = ['UNKNOWN', node.filename, node.linenr]
+			parts = ['UNKNOWN', node.filename, str(node.linenr)]
 
 		parts.insert(0, str(self.version))
 
@@ -509,7 +534,7 @@ class KconfigContext:
 			return self._kconfig.syms[parts[0]].nodes[int(parts[1])]
 
 		if type == 'CHOICE':
-			return self._kconfig.choices[int(parts[0])]
+			return self._kconfig.choices[int(parts[0])].nodes[int(parts[1])]
 
 		if type == 'COMMENT':
 			return self._kconfig.comments[int(parts[0])]
@@ -517,17 +542,19 @@ class KconfigContext:
 		if type == 'MAINMENU':
 			return self._kconfig.top_node
 
-	def get_menu(self, id=None):
+	def get_menu(self, id=None, show_all=False):
 		"""Get the KconfigMenu for the menu node with the given ID"""
-		if not id:
-			if not self.menu:
-				return
-			id = self.menu
+		if not self.valid:
+			return
+		if id:
+			node = self.find_node(id)
+		else:
+			node = self._kconfig.top_node
+			id = self._node_id(node)
 
-		node = self.find_node(id)
 		if not node:
 			return
-		return KconfigMenu(node, id)
+		return KconfigMenu(self, node, id, show_all)
 
 	def set(self, name, val):
 		"""Set a config value (without changing the conf files)"""
@@ -917,7 +944,7 @@ class KconfigServer(LSPServer):
 	def handle_search(self, params):
 		ctx = self.ctx[params['ctx']]
 		if not ctx:
-			raise RPCError(KconfigErrorCode.UNKNOWN_CTX, 'Unknown context')
+			return
 
 		return {
 			'ctx': params['ctx'],
@@ -925,32 +952,29 @@ class KconfigServer(LSPServer):
 			'symbols': ctx.symbol_search(params['query']),
 		}
 
-	# TODO: This attempts to create a virtual configuration from the open prj.conf file.
-	# This needs a bit more thought to work, as we'll need to emulate the build files
-	# @handler('textDocument/didOpen')
-	# def handle_open(self, params):
-	# 	result = super().handle_open(params)
-	# 	if params['textDocument'].get('languageId') == 'properties':
-	# 		self.create_ctx('Kconfig', [ConfFile(self.docs.get(Uri.parse(params['textDocument']['uri'])))], {})
-	# 	return result
-
 	@handler('textDocument/didChange')
 	def handle_change(self, params):
 		super().handle_change(params)
 		if self.last_ctx:
 			self.refresh_ctx(self.last_ctx)
 
-		# TODO: Add handling of Kconfig changes:
-		# - Reparse the active configuration
-		# - Mark other configurations as dirty
-		# - Rerun last_ctx.load_config()?
-		# - Also need to check which conf files were actually changed
+	@handler('kconfig/getMenu')
+	def handle_get_menu(self, params):
+		if 'ctx' in params:
+			ctx = self.ctx[params['ctx']]
+		elif self.main_uri:
+			ctx = self.ctx.get(str(self.main_uri))
+		elif self.last_ctx:
+			ctx = self.last_ctx
+		else:
+			ctx = None
 
-	@handler('kconfig/setMenu')
-	def handle_set_menu(self, params):
-		ctx = self.ctx[params['ctx']]
-		ctx.menu = params['id']
-		return ctx.get_menu(params['id'])
+		if not ctx:
+			return
+
+		show_all = 'options' in params and params['options'].get('showAll')
+
+		return ctx.get_menu(params.get('id'), show_all)
 
 	@handler('kconfig/setVal')
 	def handle_setval(self, params):
