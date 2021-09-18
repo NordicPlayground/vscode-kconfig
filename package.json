@@ -36,6 +36,15 @@
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
+		"views": {
+			"explorer": [
+				{
+					"id": "kconfig",
+					"name": "Menuconfig",
+					"type": "tree"
+				}
+			]
+		},
 		"configuration": [
 			{
 				"title": "Kconfig",

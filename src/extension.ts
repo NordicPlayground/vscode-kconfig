@@ -409,6 +409,59 @@ export class KconfigLangHandler
 	}
 }
 
+class TreeViewProvider implements vscode.TreeDataProvider<lsp.Node> {
+	activate(ctx: vscode.ExtensionContext) {
+		ctx.subscriptions.push(vscode.window.registerTreeDataProvider('kconfig', this));
+	}
+
+	// onDidChangeTreeData?: vscode.Event<void | lsp.Node | null | undefined> | undefined;
+	getTreeItem(element: lsp.Node): vscode.TreeItem {
+		const item = new vscode.TreeItem(
+			element.prompt ?? 'anonymous',
+			element.hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : undefined
+		);
+
+		switch (element.kind) {
+			case 'symbol':
+				if (element.val === 'n') {
+					item.collapsibleState = undefined;
+				}
+				item.description = element.val;
+				item.tooltip = element.help;
+				break;
+			case 'comment':
+				item.label = '';
+				item.description = element.prompt;
+				break;
+			case 'choice':
+				item.description = element.val;
+				break;
+		}
+
+		return item;
+	}
+
+	async getChildren(element?: lsp.Node): Promise<lsp.Node[]> {
+		const menu = await lsp.getMenu(undefined, element?.id);
+		const items = menu?.items ?? [];
+		if (items.length === 0) {
+			return [
+				{
+					id: 'N/A',
+					hasChildren: false,
+					isMenu: false,
+					kind: 'comment',
+					depth: 0,
+					visible: true,
+					prompt: 'No visible symbols.',
+				},
+			];
+		}
+
+		return items;
+	}
+}
+
 export var langHandler: KconfigLangHandler | undefined;
 var context: vscode.ExtensionContext;
 
@@ -419,7 +472,9 @@ export async function startExtension() {
 		langHandler.activate(context);
 	}
 
-	lsp.activate(context);
+	await lsp.activate(context);
+
+	new TreeViewProvider().activate(context);
 
 	return success;
 }
