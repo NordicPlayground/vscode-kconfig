@@ -17,7 +17,7 @@ const MODULE_FILE = vscode.Uri.parse('kconfig://zephyr/binary.dir/Kconfig.module
 const SOC_FILE = vscode.Uri.parse('kconfig://zephyr/binary.dir/Kconfig.soc');
 const SOC_DEFCONFIG_FILE = vscode.Uri.parse('kconfig://zephyr/binary.dir/Kconfig.soc.defconfig');
 const SOC_ARCH_FILE = vscode.Uri.parse('kconfig://zephyr/binary.dir/Kconfig.soc.arch');
-export var zephyrRoot: string | undefined;
+export var zephyrRoot: vscode.Uri;
 var westVersion: string;
 var westExe: string;
 export var westEnv = process.env;
@@ -26,7 +26,7 @@ function west(args: string[], callback?: (err: ExecException | null, stdout: str
 	var command = westExe + ' ' + args.join(' ');
 
 	const options: ExecOptions = {
-		cwd: zephyrRoot ?? vscode.workspace.workspaceFolders?.find(w => w.name.match(/zephyr/i))?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0].uri.fsPath,
+		cwd: zephyrRoot?.fsPath ?? vscode.workspace.workspaceFolders?.find(w => w.name.match(/zephyr/i))?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0].uri.fsPath,
 		env: westEnv,
 	};
 
@@ -76,8 +76,8 @@ export function getConfig(): { [name: string]: string } {
 		CMAKE_BINARY_DIR: "kconfig://zephyr/binary.dir",
 		KCONFIG_BINARY_DIR: "kconfig://zephyr/binary.dir",
 		TOOLCHAIN_KCONFIG_DIR: toolchain_kconfig_dir,
-		ZEPHYR_ROOT: zephyrRoot,
-		ZEPHYR_BASE: zephyrRoot,
+		ZEPHYR_ROOT: zephyrRoot.fsPath,
+		ZEPHYR_BASE: zephyrRoot.fsPath,
 	};
 
 	if (board) {
@@ -110,7 +110,7 @@ export function setBoard(b: BoardTuple) {
 
 function resolveBoard(board: string, arch: string): Promise<BoardTuple> {
 	return new Promise<BoardTuple>((resolve, reject) => {
-		glob(`**/${board}_defconfig`, { absolute: true, cwd: `${zephyrRoot}/boards/${arch}`, nounique: true, nodir: true, nobrace: true, nosort: true }, (err, matches) => {
+		glob(`**/${board}_defconfig`, { absolute: true, cwd: `${zephyrRoot.fsPath}/boards/${arch}`, nounique: true, nodir: true, nobrace: true, nosort: true }, (err, matches) => {
 			if (err || matches.length === 0) {
 				reject();
 				return;
@@ -309,8 +309,8 @@ function getZephyrBase(): string | undefined {
 }
 
 export async function setZephyrBase(uri: vscode.Uri): Promise<void> {
-	if (uri.fsPath !== zephyrRoot) {
-		zephyrRoot = uri.fsPath;
+	if (uri.fsPath !== zephyrRoot.fsPath) {
+		zephyrRoot = uri;
 	}
 }
 
@@ -355,7 +355,7 @@ async function checkIsZephyr(): Promise<boolean> {
 		return false;
 	}
 
-	zephyrRoot = kEnv.resolvePath(base).fsPath;
+	zephyrRoot = kEnv.resolvePath(base);
 	if (!zephyrRoot) {
 		vscode.window.showErrorMessage('Invalid Zephyr base: ' + base, 'Configure...').then(e => {
 			if (e) {
@@ -365,21 +365,23 @@ async function checkIsZephyr(): Promise<boolean> {
 		return false;
 	}
 
-	board = kEnv.getConfig('zephyr.board');
-	if (board?.board && board?.arch) {
-		if (!board.dir) {
-			board = await resolveBoard(board.board, board.arch).catch(() => Promise.resolve(board));
+	let b = kEnv.getConfig('zephyr.board');
+	if (b?.board && b?.arch) {
+		if (!b.dir) {
+			b = await resolveBoard(b.board, b.arch).catch(() => Promise.resolve(b));
 		}
 	} else {
 		const backupBoards = [
-			{ board: 'nrf52840dk_nrf52840', arch: 'arm', dir: `${zephyrRoot}/boards/arm/nrf52840dk_nrf52840` },
-			{ board: 'nrf52_pca10040', arch: 'arm', dir: `${zephyrRoot}/boards/arm/nrf52_pca10040` },
+			{ board: 'nrf52840dk_nrf52840', arch: 'arm', dir: vscode.Uri.joinPath(zephyrRoot, 'boards', 'arm', 'nrf52840dk_nrf52840') },
+			{ board: 'nrf52_pca10040', arch: 'arm', dir: vscode.Uri.joinPath(zephyrRoot, 'boards', 'arm', 'nrf52_pca10040') },
 		];
 
-		board = backupBoards.find(b => fs.existsSync(b.dir)) ?? <BoardTuple>{};
+		b = backupBoards.find(b => fs.existsSync(b.dir.fsPath)) ?? <BoardTuple>{};
 	}
 
-	return !!(board?.board && board.arch && board.dir);
+	board = b;
+
+	return !!(b?.board && b.arch && b.dir);
 }
 
 export async function setWest(westUri: string, env?: typeof process.env): Promise<void> {

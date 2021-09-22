@@ -38,17 +38,7 @@ export function getRootFile(): vscode.Uri {
 
 /// Root directory of project
 export function getRoot() {
-	return zephyr.zephyrRoot ?? path.dirname(getRootFile().fsPath);
-}
-
-export function findRootFromApp(appUri: vscode.Uri): string | undefined {
-	const appKconfig = path.join(appUri.fsPath, 'Kconfig');
-
-	if (fs.existsSync(appKconfig)) {
-		return appKconfig;
-	} else if (zephyr.zephyrRoot) {
-		return path.join(zephyr.zephyrRoot, 'Kconfig');
-	}
+	return zephyr.zephyrRoot ?? vscode.Uri.file(path.dirname(getRootFile().fsPath));
 }
 
 export function isActive(): boolean {

@@ -4,27 +4,25 @@
  * SPDX-License-Identifier: MIT
  */
 import * as vscode from 'vscode';
-import * as fuzzy from "fuzzysort";
-import { Config, ConfigEntry, Repository, IfScope, Scope, Comment, RootScope } from "./kconfig";
 import * as kEnv from './env';
 import * as zephyr from './zephyr';
 import * as path from 'path';
 import * as lsp from './lspClient';
 import Api from './api';
+import { ParsedFile } from './parse';
+import * as glob from 'glob';
+import { nextTick } from 'process';
 
 export class KconfigLangHandler
 	implements
-		vscode.DefinitionProvider,
-		vscode.HoverProvider,
 		vscode.CompletionItemProvider,
 		vscode.DocumentLinkProvider,
-		vscode.ReferenceProvider,
 		vscode.DocumentSymbolProvider {
 	diags: vscode.DiagnosticCollection;
 	fileDiags: {[uri: string]: vscode.Diagnostic[]};
 	rootCompletions: vscode.CompletionItem[];
 	propertyCompletions: vscode.CompletionItem[];
-	repo: Repository;
+	docs: ParsedFile[];
 	configured = false;
 	rescanTimer?: NodeJS.Timeout;
 	constructor() {
@@ -81,7 +79,7 @@ export class KconfigLangHandler
 
 		this.fileDiags = {};
 		this.diags = vscode.languages.createDiagnosticCollection('kconfig');
-		this.repo = new Repository(this.diags);
+		this.docs = [];
 	}
 
 	private setFileType(d: vscode.TextDocument) {
@@ -100,105 +98,82 @@ export class KconfigLangHandler
 		}
 	}
 
-	registerHandlers(context: vscode.ExtensionContext) {
-		var disposable: vscode.Disposable;
-
-		disposable = vscode.workspace.onDidChangeTextDocument(async e => {
-			if (e.document.languageId === 'kconfig') {
-				this.repo.onDidChange(e.document.uri, e);
-			}
-		});
-		context.subscriptions.push(disposable);
-
-		// Watch changes to files that aren't opened in vscode.
-		// Handles git checkouts and similar out-of-editor events
-		var watcher = vscode.workspace.createFileSystemWatcher('**/Kconfig*', true, false, true);
-		watcher.onDidChange(uri => {
-			if (!vscode.workspace.textDocuments.some(d => d.uri.fsPath === uri.fsPath)) {
-				this.delayedRescan();
-			}
-		});
-		context.subscriptions.push(watcher);
-
-		disposable = vscode.workspace.onDidOpenTextDocument(d => {
-			this.setFileType(d);
-		});
-		context.subscriptions.push(disposable);
-
-		disposable = vscode.workspace.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration('kconfig')) {
-				kEnv.update();
-				if (e.affectsConfiguration('kconfig.root')) {
-					this.repo.setRoot(kEnv.getRootFile());
-				}
-				this.delayedRescan()
-			}
-		});
-		context.subscriptions.push(disposable);
-
-		const kconfig = [{ language: 'kconfig', scheme: 'file' }, { language: 'kconfig', scheme: 'kconfig' }];
-		const cFiles = [{ language: 'c', scheme: 'file' }];
-		const all = [...kconfig, ...cFiles];
-
-		disposable = vscode.languages.registerDefinitionProvider(all, this);
-		context.subscriptions.push(disposable);
-		disposable = vscode.languages.registerHoverProvider(all, this);
-		context.subscriptions.push(disposable);
-		disposable = vscode.languages.registerCompletionItemProvider(kconfig, this);
-		context.subscriptions.push(disposable);
-		disposable = vscode.languages.registerDocumentLinkProvider(kconfig, this);
-		context.subscriptions.push(disposable);
-		disposable = vscode.languages.registerDocumentSymbolProvider(kconfig, this);
-		context.subscriptions.push(disposable);
-		disposable = vscode.languages.registerReferenceProvider(kconfig, this);
-		context.subscriptions.push(disposable);
-
-		this.repo.activate(context);
-	}
-
-	delayedRescan(delay=1000) {
-		// debounce:
-		if (this.rescanTimer) {
-			clearTimeout(this.rescanTimer);
+	private getDoc(uri: vscode.Uri): ParsedFile {
+		let doc = this.docs.find(d => d.uri.fsPath === uri.fsPath);
+		if (!doc) {
+			doc = new ParsedFile(uri);
+			this.docs.push(doc);
 		}
 
-		this.rescanTimer = setTimeout(() => {
-			this.rescan();
-		}, delay);
+		return doc;
 	}
 
-	rescan() {
-		this.diags.clear();
-		this.repo.reset();
+	private parseDoc(d: ParsedFile) {
+		if (d) {
+			d.parse();
+			this.diags.set(d.uri, d.diags);
+			if (d.diags.length > 0) {
+				console.log(`${d.uri.fsPath}:\n\t${d.diags.map(d => (d.range.start.line + 1) + ': ' + d.message).join('\n\t')}`);
+			}
+		}
+	}
 
-		return this.doScan();
+	registerHandlers(context: vscode.ExtensionContext) {
+		context.subscriptions.push(
+			vscode.workspace.onDidOpenTextDocument(d => {
+				this.setFileType(d);
+			}),
+			vscode.window.onDidChangeActiveTextEditor((e) => {
+				if (e?.document.languageId === 'kconfig') {
+					this.parseDoc(this.getDoc(e.document.uri))
+				}
+			}),
+
+			vscode.workspace.onDidChangeTextDocument(async e => {
+				if (e.document.languageId === 'kconfig') {
+					this.getDoc(e.document.uri).onDidChange(e);
+				}
+			}),
+		);
+
+		const kconfig = [{ language: 'kconfig', scheme: 'file' }, { language: 'kconfig', scheme: 'kconfig' }];
+
+		context.subscriptions.push(
+			vscode.languages.registerCompletionItemProvider(kconfig, this),
+			vscode.languages.registerDocumentLinkProvider(kconfig, this),
+			vscode.languages.registerDocumentSymbolProvider(kconfig, this),
+		);
 	}
 
 	activate(context: vscode.ExtensionContext) {
-		zephyr.onWestChange(context, () => this.delayedRescan());
-
 		vscode.workspace.textDocuments.forEach(d => {
 			this.setFileType(d);
 		});
+
 		this.registerHandlers(context);
+		kEnv.update();
+
+		const doc = vscode.window.activeTextEditor?.document;
+		if (doc?.languageId === 'kconfig') {
+			this.parseDoc(this.getDoc(doc.uri))
+		}
 	}
 
-	configure(board: zephyr.BoardTuple, confFiles: vscode.Uri[] = [], root?: vscode.Uri) {
+	configure(board: zephyr.BoardTuple, root?: vscode.Uri) {
 		if (!zephyr.zephyrRoot) {
 			return;
 		}
 
-		root ??= vscode.Uri.joinPath(vscode.Uri.file(zephyr.zephyrRoot), 'Kconfig');
-
 		const changedRepo =
 			!this.configured ||
-			this.repo.root?.uri.fsPath !== root.fsPath ||
 			board.board !== zephyr.board?.board;
 
 		if (changedRepo) {
 			zephyr.setBoard(board);
-			this.repo.setRoot(root);
-			this.rescan();
+		}
+
+		if (root) {
+			zephyr.setZephyrBase(root);
 		}
 
 		this.configured = true;
@@ -206,18 +181,6 @@ export class KconfigLangHandler
 
 	deactivate() {
 		this.diags.clear();
-		this.repo.reset();
-	}
-
-	private doScan() {
-		var hrTime = process.hrtime();
-
-		this.repo.parse();
-
-		hrTime = process.hrtime(hrTime);
-
-		var time_ms = Math.round(hrTime[0] * 1000 + hrTime[1] / 1000000);
-		vscode.window.setStatusBarMessage(`Kconfig: ${Object.keys(this.repo.configs).length} entries, ${time_ms} ms`, 5000);
 	}
 
 	getSymbolName(document: vscode.TextDocument, position: vscode.Position) {
@@ -234,49 +197,8 @@ export class KconfigLangHandler
 		return '';
 	}
 
-	provideDefinition(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location | vscode.Location[] | vscode.LocationLink[]> {
-		if (document.languageId === 'c' && !kEnv.getConfig('cfiles')) {
-			return null;
-		}
-
-
-		var config = this.repo.configs[this.getSymbolName(document, position)];
-		if (config) {
-			return ((config.entries.length === 1) ?
-				config.entries :
-				config.entries.filter(e => e.file.uri.fsPath !== document.uri.fsPath || position.line < e.lines.start || position.line > e.lines.end))
-				.map(e => e.loc);
-		}
-		return null;
-	}
-
-	provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Hover> {
-		if (document.languageId === 'c' && !kEnv.getConfig('cfiles')) {
-			return null;
-		}
-
-		var entry = this.repo.configs[this.getSymbolName(document, position)];
-		if (!entry) {
-			return null;
-		}
-		var text = new Array<vscode.MarkdownString>();
-		text.push(new vscode.MarkdownString(`${entry.text || entry.name}`));
-		if (entry.type) {
-			var typeLine = new vscode.MarkdownString(`\`${entry.type}\``);
-			if (entry.ranges.length === 1) {
-				typeLine.appendMarkdown(`\t\tRange: \`${entry.ranges[0].min}\`-\`${entry.ranges[0].max}\``);
-			}
-			text.push(typeLine);
-		}
-		if (entry.help) {
-			text.push(new vscode.MarkdownString(entry.help));
-		}
-		return new vscode.Hover(text, document.getWordRangeAtPosition(position));
-	}
-
-	provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
+	provideCompletionItems(document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem[] | undefined {
 		var line = document.lineAt(position.line);
-		var items: vscode.CompletionItem[];
 
 		if (!line.text.match(/(if|depends\s+on|select|default|def_bool|def_tristate|def_int|def_hex|range)/)) {
 			if (line.firstNonWhitespaceCharacterIndex > 0) {
@@ -285,127 +207,35 @@ export class KconfigLangHandler
 
 			return this.rootCompletions;
 		}
-
-		const kinds = {
-			'config': vscode.CompletionItemKind.Variable,
-			'menuconfig': vscode.CompletionItemKind.Class,
-			'choice': vscode.CompletionItemKind.Enum,
-		};
-
-		items = this.repo.configList.map(e => {
-			var item = new vscode.CompletionItem(e.name, (e.kind ? kinds[e.kind] : vscode.CompletionItemKind.Text));
-			item.sortText = e.name;
-			item.detail = e.text;
-
-			return item;
-		});
-
-		items.push(new vscode.CompletionItem('if', vscode.CompletionItemKind.Keyword));
-
-		return items;
-	}
-
-	resolveCompletionItem(item: vscode.CompletionItem, token: vscode.CancellationToken): vscode.ProviderResult<vscode.CompletionItem> {
-		if (!item.sortText) {
-			return item;
-		}
-		var e = this.repo.configs[item.sortText];
-		if (!e) {
-			return item;
-		}
-		var doc = new vscode.MarkdownString(`\`${e.type}\``);
-		if (e.ranges.length === 1) {
-			doc.appendMarkdown(`\t\tRange: \`${e.ranges[0].min}\`-\`${e.ranges[0].max}\``);
-		}
-		if (e.help) {
-			doc.appendText('\n\n');
-			doc.appendMarkdown(e.help);
-		}
-		if (e.defaults.length > 0) {
-			if (e.defaults.length > 1) {
-				doc.appendMarkdown('\n\n### Defaults:\n');
-			} else {
-				doc.appendMarkdown('\n\n**Default:** ');
-			}
-			e.defaults.forEach(dflt => {
-				doc.appendMarkdown(`\`${dflt.value}\``);
-				if (dflt.condition) {
-					doc.appendMarkdown(` if \`${dflt.condition}\``);
-				}
-				doc.appendMarkdown('\n\n');
-			});
-		}
-		item.documentation = doc;
-		return item;
 	}
 
 	provideDocumentLinks(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.DocumentLink[] {
-		var file = this.repo.files.find(f => f.uri.fsPath === document.uri.fsPath);
-		return file?.links ?? [];
-	}
-
-	provideReferences(document: vscode.TextDocument,
-		position: vscode.Position,
-		context: vscode.ReferenceContext,
-		token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location[]> {
-		var entry = this.repo.configs[this.getSymbolName(document, position)];
-		if (!entry || !entry.type || !['bool', 'tristate'].includes(entry.type)) {
-			return null;
+		const doc = this.getDoc(document.uri);
+		if (!doc.parsed) {
+			doc.parse();
 		}
-		return this.repo.configList
-			.filter(
-				(config) =>
-					[...config.selects, ...config.implys].filter(
-						(select) => select.name === entry.name
-					).length > 0
-			)
-			.map((config) => config.entries[0].loc); // TODO: return the entries instead?
+
+		const fileDir = path.dirname(doc.uri.fsPath);
+		return doc.inclusions.reduce((all, i) => {
+			const paths = glob.sync(kEnv.resolvePath(i.path, i.relative ? fileDir : zephyr.zephyrRoot.fsPath).fsPath);
+			paths.forEach((p) => {
+				const link = new vscode.DocumentLink(i.range, vscode.Uri.file(p));
+				link.tooltip = path.relative(fileDir, p);
+				all.push(link);
+			});
+
+			return all;
+		}, new Array<vscode.DocumentLink>());
+
 	}
 
 	provideDocumentSymbols(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.ProviderResult<vscode.DocumentSymbol[]> {
-		var file = this.repo.files.find(f => f.uri.fsPath === document.uri.fsPath);
-		if (!file) {
-			return [];
+		const doc = this.getDoc(document.uri);
+		if (!doc.parsed) {
+			doc.parse();
 		}
 
-		var addScope = (scope: Scope): vscode.DocumentSymbol => {
-			var name: string = scope.name;
-			if ((scope instanceof IfScope)) {
-				// Render symbol name for `if SYMBOL`-like if scopes:
-				var config = this.repo.configs[scope.expr.trim()];
-				name = config?.text ?? config?.name ?? scope.name;
-			}
-
-			var symbol = new vscode.DocumentSymbol(name, '',
-				scope.symbolKind,
-				scope.range,
-				new vscode.Range(scope.lines.start, 0, scope.lines.start, 9999));
-
-			symbol.children = (scope.children.filter(c => !(c instanceof Comment) && c.file === file) as (Scope | ConfigEntry)[])
-			.map(c =>
-				(c instanceof Scope)
-					? addScope(c)
-					: new vscode.DocumentSymbol(
-							c.config.text ?? c.config.name,
-							'',
-							c.config.symbolKind(),
-							new vscode.Range(c.lines.start, 0, c.lines.end, 9999),
-							new vscode.Range(c.lines.start, 0, c.lines.start, 9999)
-					  )
-			)
-			.reduce((prev, curr) => {
-				if (prev.length > 0 && curr.name === prev[prev.length - 1].name) {
-					prev[prev.length - 1].children.push(...curr.children);
-					prev[prev.length - 1].range = prev[prev.length - 1].range.union(curr.range);
-					return prev;
-				}
-				return [...prev, curr];
-			}, new Array<vscode.DocumentSymbol>());
-
-			return symbol;
-		};
-
-		return addScope(new RootScope(this.repo)).children;
+		return doc.root.asDocSymbol().children;
 	}
 }
 
@@ -482,8 +312,8 @@ export async function startExtension() {
 export function activate(ctx: vscode.ExtensionContext) {
 	context = ctx;
 	if (!vscode.extensions.getExtension('nordic-semiconductor.nrf-connect')) {
-		startExtension();
 	}
+	startExtension();
 
 	return new Api();
 }
