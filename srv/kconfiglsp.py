@@ -6,7 +6,7 @@ import re
 import enum
 import argparse
 from rpc import handler, RPCError
-from lsp import CodeAction, CompletionItemKind, Diagnostic, DiagnosticRelatedInfo, DocumentSymbol, FileChangeKind, InsertTextFormat, LSPServer, MarkupContent, Position, Location, Snippet, SymbolKind, TextEdit, Uri, TextDocument, Range, documentStore
+from lsp import CodeAction, CompletionItemKind, Diagnostic, DiagnosticRelatedInfo, DocumentSymbol, FileChangeKind, InsertTextFormat, LSPServer, MarkupContent, Position, Location, Snippet, SymbolInformation, SymbolKind, TextEdit, Uri, TextDocument, Range, documentStore
 
 VERSION = '1.0'
 
@@ -113,7 +113,7 @@ class Kconfig(kconfiglib.Kconfig):
 		self.diags[filename].append(Diagnostic(msg, Position(int(linenr-1), 0).range, KCONFIG_WARN_LVL))
 
 
-def _prompt(sym: kconfiglib.Symbol):
+def _prompt(sym: kconfiglib.Symbol, ignore_expr=False):
 	"""
 	Get the most accessible prompt for a given kconfig Symbol.
 
@@ -123,7 +123,7 @@ def _prompt(sym: kconfiglib.Symbol):
 	This'll only consider prompts whose if expressions are true.
 	"""
 	for node in sym.nodes:
-		if node.prompt and kconfiglib.expr_value(node.prompt[1]):
+		if node.prompt and (ignore_expr or kconfiglib.expr_value(node.prompt[1])):
 			return node.prompt[0]
 
 def _visible(node):
@@ -1108,15 +1108,22 @@ class KconfigServer(LSPServer):
 
 		def doc_sym(e: ConfEntry):
 			sym = ctx.get(e.name)
-			prompt = ''
-			if sym:
-				for node in sym.nodes:
-					if node.prompt:
-						prompt = node.prompt[0]
-
+			prompt = _prompt(sym, True)
 			return DocumentSymbol('CONFIG_' + e.name, SymbolKind.PROPERTY, e.full_range, prompt)
 
 		return [doc_sym(e) for e in file.entries()]
+
+	@handler('workspace/symbol')
+	def handle_workspace_symbols(self, params):
+		query = params['query']
+		ctx = self.last_ctx
+		if not ctx or not ctx.valid:
+			return
+
+		def sym_info(sym: kconfiglib.Symbol):
+			return SymbolInformation('CONFIG_' + sym.name, SymbolKind.PROPERTY, _loc(sym)[0], _prompt(sym, True))
+
+		return [sym_info(s) for s in ctx.symbols(query) if len(s.nodes)]
 
 	@handler('textDocument/codeAction')
 	def handle_code_action(self, params):

@@ -890,6 +890,28 @@ class DocumentSymbol:
 		self.children: List[DocumentSymbol] = []
 
 
+class SymbolInformation:
+	"""
+	Symbol information items represent single language constructs, and presents some basic information
+	about them. SymbolInformation is the workspace level representation of a DocumentSymbol.
+	"""
+	def __init__(self, name: str, kind: SymbolKind, loc: Location, detail: str=None):
+		self.name = name
+		self.kind = kind
+		self.location = loc
+		self.detail = detail
+
+	def to_dict(self):
+		retval = {
+			'name': self.name,
+			'kind': self.kind,
+			'location': self.location,
+		}
+		if self.detail:
+			retval['containerName'] = self.detail
+		return retval
+
+
 class MarkupContent:
 	"""
 	A string formatted using markdown or plaintext.
