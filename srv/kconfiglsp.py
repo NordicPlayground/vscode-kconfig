@@ -238,7 +238,7 @@ class KconfigMenu:
 		sym = node.item
 		item = {
 			'visible': _visible(node) != 0,
-			'loc': Location(Uri.file(os.path.join(self.ctx.env['ZEPHYR_BASE'], node.filename)), Position(node.linenr, 0).range),
+			'loc': Location(Uri.file(os.path.join(self.ctx.env['ZEPHYR_BASE'], node.filename)), Position(node.linenr - 1, 0).range),
 			'isMenu': node.is_menuconfig,
 			'hasChildren': node.list != None or isinstance(sym, kconfiglib.Choice),
 			'depth': _suboption_depth(node),
