@@ -1,18 +1,21 @@
 {
-	"name": "kconfig-lang",
-	"displayName": "Kconfig for the Zephyr Project",
+	"name": "nrf-kconfig",
+	"displayName": "nRF Kconfig",
 	"description": "Kconfig language support for the Zephyr Project",
-	"version": "1.1.8",
-	"publisher": "trond-snekvik",
+	"publisher": "nordic-semiconductor",
+	"author": {
+		"name": "Nordic Semiconductor",
+		"url": "https://www.nordicsemi.com/"
+	},
+	"version": "0.0.0",
+	"repository": {
+		"url": "https://github.com/NordicPlayground/vscode-nrf-kconfig",
+		"type": "git"
+	},
 	"engines": {
 		"vscode": "^1.37.0"
 	},
 	"icon": "doc/Kconfig_icon.png",
-	"author": {
-		"email": "trond.snekvik@gmail.com",
-		"name": "Trond Einar Snekvik",
-		"url": "https://github.com/trond-snekvik"
-	},
 	"extensionKind": [
 		"workspace"
 	],
@@ -154,7 +157,7 @@
 		"test-compile": "tsc -p ./",
 		"lint": "node ./scripts/lint.js",
 		"lintfix": "node ./scripts/lint.js --fix",
-		"apply-copyright": "node ./scripts/copyright.js",
+		"copyright": "ts-node ./scripts/copyright.ts",
 		"updateBuildNumber": "node ./scripts/updateBuildNumber.js"
 	},
 	"devDependencies": {
@@ -163,8 +166,10 @@
 		"@types/node": "^10.12.21",
 		"@types/vscode": "^1.37.0",
 		"@types/yaml": "^1.2.0",
+		"globby": "^11.0.2",
 		"prettier": "^2.3.2",
 		"ts-loader": "^9.2.4",
+		"ts-node": "^10.2.1",
 		"tslint": "^5.12.1",
 		"typescript": "^4.3.5",
 		"webpack": "^5.47.1",
@@ -175,9 +180,5 @@
 		"yaml": "^1.7.2",
 		"glob": "7.1.6",
 		"vscode-languageclient": "^7.0.0"
-	},
-	"repository": {
-		"url": "https://github.com/trond-snekvik/vscode-kconfig.git",
-		"type": "git"
 	}
 }
