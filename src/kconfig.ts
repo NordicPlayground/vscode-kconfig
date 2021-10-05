@@ -83,6 +83,13 @@ export class IfScope extends Scope {
 	constructor(public expr: string, line: number, file: ParsedFile) {
 		super('if', expr, line, file, vscode.SymbolKind.Module);
 	}
+
+	public get name(): string {
+		const entryName = this.expr.trim().replace(/^CONFIG_/, '');
+		const entry = this.file.entries.find(e => e.name === entryName);
+
+		return entry?.prompt ?? this.expr;
+	}
 }
 
 export class MenuScope extends Scope {
