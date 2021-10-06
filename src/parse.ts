@@ -4,7 +4,17 @@
  * SPDX-License-Identifier: MIT
  */
 import * as vscode from 'vscode';
-import { Scope, ConfigValueType, ConfigEntry, IfScope, MenuScope, ChoiceScope, ChoiceEntry, Comment, RootScope } from "./kconfig";
+import {
+	Scope,
+	ConfigValueType,
+	ConfigEntry,
+	IfScope,
+	MenuScope,
+	ChoiceScope,
+	ChoiceEntry,
+	Comment,
+	RootScope,
+} from './kconfig';
 import * as kEnv from './env';
 
 type FileInclusion = { range: vscode.Range; path: string; relative: boolean };
@@ -24,16 +34,16 @@ export class ParsedFile {
 		this.parsed = false;
 	}
 
-    get uri(): vscode.Uri {
-        return this.doc.uri;
-    }
+	get uri(): vscode.Uri {
+		return this.doc.uri;
+	}
 
 	onDidChange(change?: vscode.TextDocumentChangeEvent) {
 		if (!change) {
 			return;
 		}
 
-        this.parse();
+		this.parse();
 	}
 
 	reset() {
@@ -44,7 +54,7 @@ export class ParsedFile {
 	}
 
 	parse() {
-        const text = this.doc.getText();
+		const text = this.doc.getText();
 		this.reset();
 		const scopes = [this.root];
 
@@ -55,7 +65,7 @@ export class ParsedFile {
 
 		const getScope = () => {
 			return scopes[scopes.length - 1];
-		}
+		};
 
 		const setScope = (s: Scope) => {
 			scopes[scopes.length - 1].addScope(s);
@@ -110,7 +120,8 @@ export class ParsedFile {
 			}
 
 			function getString(text: string) {
-				const match = text.match(/^"(.*?)"\s*(?:$|#.*)/) ?? text.match(/^(\S+)\s*(?:$|#.*)/);
+				const match =
+					text.match(/^"(.*?)"\s*(?:$|#.*)/) ?? text.match(/^(\S+)\s*(?:$|#.*)/);
 				return match?.[1];
 			}
 
@@ -127,25 +138,27 @@ export class ParsedFile {
 					return getString(text);
 				}
 
-				return getNumber(text) ?? text.match(/^((?:(\|\||&&|!?\s*\(|[)<>]|[!<>]?\=|"[^"]*"|'[^']*'|!?\s*\w+\b|!?\$\(.*\))\s*)+)\s*(?:$|#.*)/)?.[1];
+				return (
+					getNumber(text) ??
+					text.match(
+						/^((?:(\|\||&&|!?\s*\(|[)<>]|[!<>]?\=|"[^"]*"|'[^']*'|!?\s*\w+\b|!?\$\(.*\))\s*)+)\s*(?:$|#.*)/
+					)?.[1]
+				);
 			}
 
 			function getIf(text: string): string | undefined | vscode.Diagnostic {
 				const ifMatch = text.match(/^\bif\s+(.*)/);
 				const ifRange = lineRange.with({
-					start: new vscode.Position(
-						lineNumber,
-						line.indexOf('if') + 'if'.length
-					),
+					start: new vscode.Position(lineNumber, line.indexOf('if') + 'if'.length),
 				});
 
 				if (ifMatch) {
 					const expr = getExpression(ifMatch[1]);
 					if (!expr) {
 						return new vscode.Diagnostic(
-								ifRange,
-								'Invalid expression',
-								vscode.DiagnosticSeverity.Error
+							ifRange,
+							'Invalid expression',
+							vscode.DiagnosticSeverity.Error
 						);
 					}
 
@@ -221,14 +234,20 @@ export class ParsedFile {
 						this.entries.push(entry);
 						getScope().children.push(entry);
 					} else {
-						this.diags.push(new vscode.Diagnostic(lineRange, 'Expected name', vscode.DiagnosticSeverity.Error));
+						this.diags.push(
+							new vscode.Diagnostic(
+								lineRange,
+								'Expected name',
+								vscode.DiagnosticSeverity.Error
+							)
+						);
 						entry = null;
 					}
 					break;
 
 				case 'choice': {
 					match = getSymbol(rest);
-                    const path = vscode.workspace.asRelativePath(this.uri);
+					const path = vscode.workspace.asRelativePath(this.uri);
 					entry = new ChoiceEntry(
 						match ?? `<choice at ${path}:${lineNumber + 1}>`,
 						lineNumber,
@@ -236,14 +255,20 @@ export class ParsedFile {
 					);
 					setScope(new ChoiceScope(entry as ChoiceEntry));
 					break;
-                }
+				}
 				case 'source':
 				case 'osource':
 				case 'orsource':
 				case 'rsource': {
 					const path = getString(rest);
 					if (!path) {
-						this.diags.push(new vscode.Diagnostic(lineRange, 'Expected path string', vscode.DiagnosticSeverity.Error));
+						this.diags.push(
+							new vscode.Diagnostic(
+								lineRange,
+								'Expected path string',
+								vscode.DiagnosticSeverity.Error
+							)
+						);
 						break;
 					}
 					this.inclusions.push({
@@ -265,9 +290,21 @@ export class ParsedFile {
 					if (match) {
 						setScope(new IfScope(match, lineNumber, this));
 					} else if (rest.match(/^\s*(#.*)?$/)) {
-						this.diags.push(new vscode.Diagnostic(lineRange, 'Expected expression', vscode.DiagnosticSeverity.Error));
+						this.diags.push(
+							new vscode.Diagnostic(
+								lineRange,
+								'Expected expression',
+								vscode.DiagnosticSeverity.Error
+							)
+						);
 					} else {
-						this.diags.push(new vscode.Diagnostic(lineRange, 'Invalid expression', vscode.DiagnosticSeverity.Error));
+						this.diags.push(
+							new vscode.Diagnostic(
+								lineRange,
+								'Invalid expression',
+								vscode.DiagnosticSeverity.Error
+							)
+						);
 					}
 					break;
 
@@ -275,7 +312,13 @@ export class ParsedFile {
 					entry = null;
 					match = getString(rest);
 					if (!match) {
-						this.diags.push(new vscode.Diagnostic(lineRange, 'Expected prompt', vscode.DiagnosticSeverity.Error));
+						this.diags.push(
+							new vscode.Diagnostic(
+								lineRange,
+								'Expected prompt',
+								vscode.DiagnosticSeverity.Error
+							)
+						);
 					}
 					break;
 
@@ -285,7 +328,13 @@ export class ParsedFile {
 					if (match) {
 						setScope(new MenuScope(match, lineNumber, this));
 					} else {
-						this.diags.push(new vscode.Diagnostic(lineRange, 'Expected prompt', vscode.DiagnosticSeverity.Error));
+						this.diags.push(
+							new vscode.Diagnostic(
+								lineRange,
+								'Expected prompt',
+								vscode.DiagnosticSeverity.Error
+							)
+						);
 					}
 					break;
 
@@ -329,7 +378,7 @@ export class ParsedFile {
 						);
 						break;
 					}
-					match = rest.match(/^"(.*)"\s*(.*)/)
+					match = rest.match(/^"(.*)"\s*(.*)/);
 					if (match) {
 						const condition = getIf(match[2]);
 						if (condition instanceof vscode.Diagnostic) {
@@ -382,9 +431,9 @@ export class ParsedFile {
 					}
 
 					if (firstWord == 'imply') {
-						entry.implys.push({name: match[1], condition });
+						entry.implys.push({ name: match[1], condition });
 					} else {
-						entry.selects.push({name: match[1], condition });
+						entry.selects.push({ name: match[1], condition });
 					}
 					entry.extend(lineNumber);
 					break;
@@ -480,7 +529,7 @@ export class ParsedFile {
 						break;
 					}
 
-					entry.defaults.push({value: expr[0], condition: expr[1] });
+					entry.defaults.push({ value: expr[0], condition: expr[1] });
 
 					// Assign type:
 					if (firstWord !== 'default') {
@@ -511,7 +560,13 @@ export class ParsedFile {
 				case 'range': {
 					match = rest.match(/^([+-]?\w+|\$\(.+\))\s+([+-]?\w+|\$\(.+\))(?:\s+(if.*))?/);
 					if (!match) {
-						this.diags.push(new vscode.Diagnostic(lineRange, 'Expected range', vscode.DiagnosticSeverity.Error));
+						this.diags.push(
+							new vscode.Diagnostic(
+								lineRange,
+								'Expected range',
+								vscode.DiagnosticSeverity.Error
+							)
+						);
 						break;
 					}
 
@@ -567,7 +622,13 @@ export class ParsedFile {
 							entry.extend(lineNumber);
 						}
 					} else {
-						this.diags.push(new vscode.Diagnostic(lineRange, 'Expected expression', vscode.DiagnosticSeverity.Error));
+						this.diags.push(
+							new vscode.Diagnostic(
+								lineRange,
+								'Expected expression',
+								vscode.DiagnosticSeverity.Error
+							)
+						);
 					}
 					break;
 
@@ -578,7 +639,13 @@ export class ParsedFile {
 				case 'visible': {
 					const condition = getIf(rest);
 					if (!condition) {
-						this.diags.push(new vscode.Diagnostic(lineRange, 'Expected if-expression', vscode.DiagnosticSeverity.Error));
+						this.diags.push(
+							new vscode.Diagnostic(
+								lineRange,
+								'Expected if-expression',
+								vscode.DiagnosticSeverity.Error
+							)
+						);
 						break;
 					}
 					if (condition instanceof vscode.Diagnostic) {
@@ -587,7 +654,13 @@ export class ParsedFile {
 					}
 					const scope = getScope();
 					if (!(scope instanceof MenuScope)) {
-						this.diags.push(new vscode.Diagnostic(lineRange, '"visible if" is only valid in menu scopes', vscode.DiagnosticSeverity.Error));
+						this.diags.push(
+							new vscode.Diagnostic(
+								lineRange,
+								'"visible if" is only valid in menu scopes',
+								vscode.DiagnosticSeverity.Error
+							)
+						);
 						break;
 					}
 
@@ -598,7 +671,13 @@ export class ParsedFile {
 				case 'optional': {
 					const scope = getScope();
 					if (!(scope instanceof ChoiceScope)) {
-						this.diags.push(new vscode.Diagnostic(lineRange, '"optional" is only valid in choice entries', vscode.DiagnosticSeverity.Error));
+						this.diags.push(
+							new vscode.Diagnostic(
+								lineRange,
+								'"optional" is only valid in choice entries',
+								vscode.DiagnosticSeverity.Error
+							)
+						);
 						break;
 					}
 
@@ -617,12 +696,21 @@ export class ParsedFile {
 					const expectedScopes = {
 						endif: IfScope,
 						endmenu: MenuScope,
-						endchoice: ChoiceScope
+						endchoice: ChoiceScope,
 					};
 					if (!(scope instanceof expectedScopes[firstWord])) {
-						const diag = new vscode.Diagnostic(lineRange, `Unexpected ${firstWord}`, vscode.DiagnosticSeverity.Error);
+						const diag = new vscode.Diagnostic(
+							lineRange,
+							`Unexpected ${firstWord}`,
+							vscode.DiagnosticSeverity.Error
+						);
 						if (scope) {
-							diag.relatedInformation = [new vscode.DiagnosticRelatedInformation(new vscode.Location(this.uri, scope.range), 'Opening scope')];
+							diag.relatedInformation = [
+								new vscode.DiagnosticRelatedInformation(
+									new vscode.Location(this.uri, scope.range),
+									'Opening scope'
+								),
+							];
 						}
 						this.diags.push(diag);
 						break;
@@ -639,7 +727,13 @@ export class ParsedFile {
 						break;
 					}
 
-					this.diags.push(new vscode.Diagnostic(lineRange, `Invalid token`, vscode.DiagnosticSeverity.Error));
+					this.diags.push(
+						new vscode.Diagnostic(
+							lineRange,
+							`Invalid token`,
+							vscode.DiagnosticSeverity.Error
+						)
+					);
 			}
 		}
 

@@ -7,13 +7,13 @@ import * as vscode from 'vscode';
 import { ParsedFile } from './parse';
 
 export type ConfigValue = string | number | boolean;
-export type ConfigValueRange = { max: string, min: string, condition?: string };
+export type ConfigValueRange = { max: string; min: string; condition?: string };
 export type ConfigValueType = 'string' | 'int' | 'hex' | 'bool' | 'tristate';
 export type ConfigKind = 'config' | 'menuconfig' | 'choice';
-export type ConfigDefault = {value: string, condition?: string};
-export type ConfigSelect = {name: string, condition?: string};
-export type ConfigDependency = {expr: string, condition?: string};
-export type LineRange = {start: number, end: number};
+export type ConfigDefault = { value: string; condition?: string };
+export type ConfigSelect = { name: string; condition?: string };
+export type ConfigDependency = { expr: string; condition?: string };
+export type LineRange = { start: number; end: number };
 
 export class Comment {
 	file: ParsedFile;
@@ -34,9 +34,15 @@ export abstract class Scope {
 	children: (Scope | ConfigEntry | Comment)[];
 	symbolKind: vscode.SymbolKind;
 
-	constructor(public type: string, name: string, line: number, file: ParsedFile, symbolKind: vscode.SymbolKind) {
+	constructor(
+		public type: string,
+		name: string,
+		line: number,
+		file: ParsedFile,
+		symbolKind: vscode.SymbolKind
+	) {
 		this._name = name;
-		this.lines = {start: line, end: line};
+		this.lines = { start: line, end: line };
 		this.file = file;
 		this.symbolKind = symbolKind;
 		this.children = [];
@@ -86,7 +92,7 @@ export class IfScope extends Scope {
 
 	public get name(): string {
 		const entryName = this.expr.trim().replace(/^CONFIG_/, '');
-		const entry = this.file.entries.find(e => e.name === entryName);
+		const entry = this.file.entries.find((e) => e.name === entryName);
 
 		return entry?.prompt ?? this.expr;
 	}
@@ -138,7 +144,7 @@ export class ConfigEntry {
 
 	constructor(name: string, line: number, file: ParsedFile) {
 		this.name = name;
-		this.lines = {start: line, end: line};
+		this.lines = { start: line, end: line };
 		this.file = file;
 		this.ranges = [];
 		this.dependencies = [];
@@ -147,7 +153,7 @@ export class ConfigEntry {
 		this.defaults = [];
 	}
 
-	extend(lineNumber: number)  {
+	extend(lineNumber: number) {
 		if (lineNumber < this.lines.start) {
 			throw new Error("Extending upwards, shouldn't be possible.");
 		}
@@ -159,7 +165,10 @@ export class ConfigEntry {
 	}
 
 	get loc(): vscode.Location {
-		return new vscode.Location(this.file.uri, new vscode.Range(this.lines.start, 0, this.lines.end, 99999));
+		return new vscode.Location(
+			this.file.uri,
+			new vscode.Range(this.lines.start, 0, this.lines.end, 99999)
+		);
 	}
 
 	asDocSymbol(): vscode.DocumentSymbol {
@@ -174,12 +183,18 @@ export class ConfigEntry {
 
 	symbolKind(): vscode.SymbolKind {
 		switch (this.type) {
-			case "bool": return vscode.SymbolKind.Property;
-			case "tristate": return vscode.SymbolKind.EnumMember;
-			case "int": return vscode.SymbolKind.Number;
-			case "hex": return vscode.SymbolKind.Number;
-			case "string": return vscode.SymbolKind.String;
-			default: return vscode.SymbolKind.Property;
+			case 'bool':
+				return vscode.SymbolKind.Property;
+			case 'tristate':
+				return vscode.SymbolKind.EnumMember;
+			case 'int':
+				return vscode.SymbolKind.Number;
+			case 'hex':
+				return vscode.SymbolKind.Number;
+			case 'string':
+				return vscode.SymbolKind.String;
+			default:
+				return vscode.SymbolKind.Property;
 		}
 	}
 }

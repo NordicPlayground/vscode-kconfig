@@ -22,12 +22,14 @@ export function update() {
 	Object.assign(env, getConfig('env'));
 
 	try {
-		Object.keys(env).forEach(key => {
+		Object.keys(env).forEach((key) => {
 			var match;
 			while ((match = env[key].match(/\${(.+?)}/)) !== null) {
 				var replacement: string;
 				if (match[1] === key) {
-					vscode.window.showErrorMessage(`Kconfig environment is circular: variable ${key} references itself`);
+					vscode.window.showErrorMessage(
+						`Kconfig environment is circular: variable ${key} references itself`
+					);
 					throw new Error('Kconfig environment is circular');
 				} else if (match[1] in env) {
 					replacement = env[match[1]];
@@ -38,7 +40,9 @@ export function update() {
 
 					var folder = match[1].match(/workspaceFolder:(.+)/);
 					if (folder) {
-						var wsf = vscode.workspace.workspaceFolders.find(f => f.name === folder![1]);
+						var wsf = vscode.workspace.workspaceFolders.find(
+							(f) => f.name === folder![1]
+						);
 						if (!wsf) {
 							return;
 						}
@@ -59,9 +63,12 @@ export function update() {
 }
 
 export function pathReplace(fileName: string): string {
-	fileName = fileName.replace('${workspaceFolder}', vscode.workspace.workspaceFolders?.[0].uri.fsPath ?? '');
+	fileName = fileName.replace(
+		'${workspaceFolder}',
+		vscode.workspace.workspaceFolders?.[0].uri.fsPath ?? ''
+	);
 	fileName = fileName.replace(/\${workspaceFolder:(.+?)}/g, (original, name) => {
-		var folder = vscode.workspace.workspaceFolders!.find(folder => folder.name === name);
+		var folder = vscode.workspace.workspaceFolders!.find((folder) => folder.name === name);
 		return folder ? folder.uri.fsPath : original;
 	});
 
@@ -86,10 +93,19 @@ export function pathReplace(fileName: string): string {
 
 export function getWorkspaceRoot(file: string): string {
 	if (path.isAbsolute(file)) {
-		return vscode.workspace.getWorkspaceFolder(vscode.Uri.file(file))?.uri.fsPath ?? path.dirname(file);
+		return (
+			vscode.workspace.getWorkspaceFolder(vscode.Uri.file(file))?.uri.fsPath ??
+			path.dirname(file)
+		);
 	}
 
-	return vscode.workspace.workspaceFolders?.find(w => fs.existsSync(path.resolve(w.uri.fsPath, file)))?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0].uri.fsPath ?? path.dirname(file);
+	return (
+		vscode.workspace.workspaceFolders?.find((w) =>
+			fs.existsSync(path.resolve(w.uri.fsPath, file))
+		)?.uri.fsPath ??
+		vscode.workspace.workspaceFolders?.[0].uri.fsPath ??
+		path.dirname(file)
+	);
 }
 
 export function resolvePath(fileName: string, base?: string): vscode.Uri {
@@ -98,7 +114,8 @@ export function resolvePath(fileName: string, base?: string): vscode.Uri {
 	}
 
 	fileName = pathReplace(fileName);
-	if (fileName.match(/^\w{2,}:\//)) { // raw URI
+	if (fileName.match(/^\w{2,}:\//)) {
+		// raw URI
 		return vscode.Uri.parse(fileName);
 	}
 
