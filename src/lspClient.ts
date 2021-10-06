@@ -39,7 +39,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
 	const serverOptions: ServerOptions = {
 		command: 'python',
-		args: [path.resolve(ctx.extensionPath, 'srv', 'kconfiglsp.py'), '--log'],
+		args: [path.resolve(ctx.extensionPath, 'srv', 'kconfiglsp.py')],
 		options: {
 			cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
 			env: westEnv,
