@@ -26,8 +26,8 @@ export async function setConfig(name: string, value: any, target=vscode.Configur
 export function getRootFile(): vscode.Uri {
 	var root = getConfig('root');
 	if (!root) {
-		if (zephyr.zephyrRoot) {
-			root = zephyr.zephyrRoot + '/Kconfig';
+		if (zephyr.zephyrBase) {
+			root = zephyr.zephyrBase + '/Kconfig';
 		} else {
 			root = '${workspaceFolder}/Kconfig';
 		}
@@ -38,7 +38,7 @@ export function getRootFile(): vscode.Uri {
 
 /// Root directory of project
 export function getRoot() {
-	return zephyr.zephyrRoot ?? vscode.Uri.file(path.dirname(getRootFile().fsPath));
+	return zephyr.zephyrBase ?? vscode.Uri.file(path.dirname(getRootFile().fsPath));
 }
 
 export function isActive(): boolean {

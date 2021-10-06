@@ -11,10 +11,11 @@ import * as lsp from './lspClient';
 class Api {
     public version = 3;
 
-    async activate(zephyrBase: vscode.Uri, west: string, env?: typeof process.env): Promise<boolean> {
-        await zephyr.setWest(west, env);
-        await zephyr.setZephyrBase(zephyrBase);
-        return startExtension();
+    async activate(zephyrBase: vscode.Uri, _: string, env?: typeof process.env): Promise<boolean> {
+        zephyr.setZephyrBase(zephyrBase);
+        lsp.setWestEnv(env);
+        startExtension();
+        return true;
     }
 
     setConfig(config?: vscode.Uri): void {

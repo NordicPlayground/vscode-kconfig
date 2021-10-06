@@ -159,26 +159,6 @@ export class KconfigLangHandler
 		}
 	}
 
-	configure(board: zephyr.BoardTuple, root?: vscode.Uri) {
-		if (!zephyr.zephyrRoot) {
-			return;
-		}
-
-		const changedRepo =
-			!this.configured ||
-			board.board !== zephyr.board?.board;
-
-		if (changedRepo) {
-			zephyr.setBoard(board);
-		}
-
-		if (root) {
-			zephyr.setZephyrBase(root);
-		}
-
-		this.configured = true;
-	}
-
 	deactivate() {
 		this.diags.clear();
 	}
@@ -217,7 +197,14 @@ export class KconfigLangHandler
 
 		const fileDir = path.dirname(doc.uri.fsPath);
 		return doc.inclusions.reduce((all, i) => {
-			const paths = glob.sync(kEnv.resolvePath(i.path, i.relative ? fileDir : zephyr.zephyrRoot.fsPath).fsPath);
+			const base = i.relative
+				? fileDir
+				: zephyr.zephyrBase?.fsPath ??
+				  vscode.workspace.workspaceFolders?.[0].uri.fsPath ??
+				  '';
+			const paths = glob.sync(
+				kEnv.resolvePath(i.path, base).fsPath
+			);
 			paths.forEach((p) => {
 				const link = new vscode.DocumentLink(i.range, vscode.Uri.file(p));
 				link.tooltip = path.relative(fileDir, p);
@@ -296,17 +283,14 @@ export var langHandler: KconfigLangHandler | undefined;
 var context: vscode.ExtensionContext;
 
 export async function startExtension() {
-	const success = await zephyr.resolveEnvironment(context);
-	if (success) {
-		langHandler = new KconfigLangHandler();
-		langHandler.activate(context);
-	}
+	await zephyr.activate();
+
+	langHandler = new KconfigLangHandler();
+	langHandler.activate(context);
 
 	await lsp.activate(context);
 
 	new TreeViewProvider().activate(context);
-
-	return success;
 }
 
 export function activate(ctx: vscode.ExtensionContext) {
@@ -320,5 +304,5 @@ export function activate(ctx: vscode.ExtensionContext) {
 
 export function deactivate() {
 	langHandler?.deactivate();
-	// lsp.client.stop();
+	lsp.stop();
 }

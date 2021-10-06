@@ -11,10 +11,16 @@ import {
 	ServerOptions,
 	TransportKind,
 } from 'vscode-languageclient/node';
-import { westEnv } from './zephyr';
 import { existsSync, readFile } from 'fs';
 
 var client: LanguageClient;
+var westEnv = process.env;
+
+export function setWestEnv(env?: typeof process.env) {
+	if (env) {
+		westEnv = env;
+	}
+}
 
 export async function activate(ctx: vscode.ExtensionContext) {
 	vscode.commands.registerCommand('kconfig.add', () => {
@@ -293,4 +299,8 @@ export async function getMenu(
 			};
 		}),
 	};
+}
+
+export function stop() {
+	client?.stop();
 }
