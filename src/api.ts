@@ -6,7 +6,7 @@
 import * as vscode from 'vscode';
 import * as zephyr from './zephyr';
 import { startExtension } from './extension';
-import * as lsp from './lspClient';
+import * as lsp from './lsp';
 
 class Api {
     public version = 3;

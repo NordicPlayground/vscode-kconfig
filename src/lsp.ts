@@ -280,9 +280,9 @@ export async function getMenu(
 		id: node,
 		options,
 	});
-    if (!rsp) {
-        return;
-    }
+	if (!rsp) {
+		return;
+	}
 
 	return <Menu>{
 		...(rsp as Menu),
