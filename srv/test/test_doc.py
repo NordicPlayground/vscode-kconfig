@@ -1,4 +1,4 @@
-from ..lsp import Position, Range, TextDocument, Uri
+from lsp import Position, Range, TextDocument, Uri
 import os.path as path
 
 # Test the LSP TextDocument class and accompanying classes

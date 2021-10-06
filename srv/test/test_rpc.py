@@ -1,7 +1,6 @@
 import json
 import sys
-from ..rpc import RPCError, RPCServer, handler
-
+from rpc import RPCError, RPCServer, handler
 
 class StreamEnd(Exception):
     pass

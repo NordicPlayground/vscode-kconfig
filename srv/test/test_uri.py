@@ -1,4 +1,4 @@
-from .. import lsp
+import lsp
 
 # Test LSP Uri class
 
