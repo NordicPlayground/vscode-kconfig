@@ -37,8 +37,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
 			});
 	});
 
+	const pythonConfig = vscode.workspace.getConfiguration('python');
+	const python = pythonConfig.get<string>('defaultInterpreterPath') ?? 'python';
+
 	const serverOptions: ServerOptions = {
-		command: 'python',
+		command: python,
 		args: [path.resolve(ctx.extensionPath, 'srv', 'kconfiglsp.py')],
 		options: {
 			cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
