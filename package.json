@@ -114,7 +114,7 @@
 		"watch": "tsc -watch -p ./",
 		"test": "npm run compile && node ./node_modules/vscode/bin/test",
 		"webpack": "webpack --mode development",
-		"webpack-dev": "npx webpack --mode development --watch",
+		"dev": "npx webpack --mode development --watch",
 		"test-compile": "tsc -p ./",
 		"lint": "node ./scripts/lint.js",
 		"lintfix": "node ./scripts/lint.js --fix",
