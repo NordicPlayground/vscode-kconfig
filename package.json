@@ -35,19 +35,11 @@
 		"Zephyr RTOS"
 	],
 	"activationEvents": [
-		"*"
+		"onLanguage:kconfig",
+		"onLanguage:properties"
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
-		"views": {
-			"explorer": [
-				{
-					"id": "kconfig",
-					"name": "Menuconfig",
-					"type": "tree"
-				}
-			]
-		},
 		"configuration": [
 			{
 				"title": "Kconfig",
@@ -75,45 +67,14 @@
 						"description": "Disable Kconfig language features",
 						"default": false
 					},
-					"kconfig.zephyr.board": {
-						"type": "object",
-						"description": "Zephyr board to compile for",
-						"properties": {
-							"board": {
-								"type": "string"
-							},
-							"arch": {
-								"type": "string"
-							},
-							"dir": {
-								"type": "string"
-							}
-						}
-					},
-					"kconfig.zephyr.west": {
-						"type": "string",
-						"description": "Location of the West tool"
-					},
 					"kconfig.zephyr.base": {
 						"type": "string",
 						"description": "Override location of Zephyr"
-					},
-					"kconfig.zephyr.soc_roots": {
-						"type": "array",
-						"description": "Additional out-of-tree SoC root directories, as passed to CMake through -DSOC_ROOT",
-						"items": {
-							"type": "string"
-						}
 					}
 				}
 			}
 		],
 		"commands": [
-			{
-				"command": "kconfig.zephyr.setBoard",
-				"title": "Kconfig: Set board for Zephyr",
-				"enablement": "workspaceFolderCount > 0"
-			},
 			{
 				"command": "kconfig.add",
 				"title": "Kconfig: Add build folder"

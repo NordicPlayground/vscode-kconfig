@@ -10,44 +10,8 @@ import * as zephyr from './zephyr';
 
 var config = vscode.workspace.getConfiguration('kconfig');
 
-export var extensionContext: vscode.ExtensionContext;
-export function setExtensionContext(ctx: vscode.ExtensionContext) {
-	extensionContext = ctx;
-}
-
 export function getConfig(name: string): any {
 	return config.get(name);
-}
-
-export async function setConfig(name: string, value: any, target=vscode.ConfigurationTarget.Workspace) {
-	await config.update(name, value, target);
-}
-
-export function getRootFile(): vscode.Uri {
-	var root = getConfig('root');
-	if (!root) {
-		if (zephyr.zephyrBase) {
-			root = zephyr.zephyrBase + '/Kconfig';
-		} else {
-			root = '${workspaceFolder}/Kconfig';
-		}
-	}
-
-	return resolvePath(root);
-}
-
-/// Root directory of project
-export function getRoot() {
-	return zephyr.zephyrBase ?? vscode.Uri.file(path.dirname(getRootFile().fsPath));
-}
-
-export function isActive(): boolean {
-	if (getConfig('disable')) {
-		return false;
-	}
-
-	var root = getRootFile();
-	return !!(root && fs.existsSync(root.fsPath));
 }
 
 var env: { [name: string]: string };
@@ -145,27 +109,3 @@ export function resolvePath(fileName: string, base?: string): vscode.Uri {
 	// Relying on the uri accepting files without schemes:
 	return vscode.Uri.file(path.resolve(base, fileName));
 }
-
-export type Environment = { [variable: string]: string };
-
-export function replace(text: string, env: Environment) {
-	return text.replace(/\$\((.+?)\)/, (original, variable) => ((variable in env) ? env[variable] : original));
-}
-
-var filemap: {[scheme: string]: (uri: vscode.Uri) => string} = {};
-
-export function readFile(uri: vscode.Uri): string {
-	if (uri.scheme in filemap) {
-		return filemap[uri.scheme](uri);
-	}
-
-	console.error(`Unknown file ${uri.toString()}`);
-
-	return '';
-}
-
-export function registerFileProvider(scheme: string, cb: (uri: vscode.Uri) => string) {
-	filemap[scheme] = cb;
-}
-
-registerFileProvider('file', (uri: vscode.Uri) => fs.readFileSync(uri.fsPath, {encoding: 'utf-8'}));

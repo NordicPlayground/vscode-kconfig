@@ -11,7 +11,6 @@ import * as lsp from './lspClient';
 import Api from './api';
 import { ParsedFile } from './parse';
 import * as glob from 'glob';
-import { nextTick } from 'process';
 
 export class KconfigLangHandler
 	implements
@@ -22,7 +21,7 @@ export class KconfigLangHandler
 	fileDiags: {[uri: string]: vscode.Diagnostic[]};
 	rootCompletions: vscode.CompletionItem[];
 	propertyCompletions: vscode.CompletionItem[];
-	docs: ParsedFile[];
+	files: ParsedFile[];
 	configured = false;
 	rescanTimer?: NodeJS.Timeout;
 	constructor() {
@@ -79,7 +78,7 @@ export class KconfigLangHandler
 
 		this.fileDiags = {};
 		this.diags = vscode.languages.createDiagnosticCollection('kconfig');
-		this.docs = [];
+		this.files = [];
 	}
 
 	private setFileType(d: vscode.TextDocument) {
@@ -98,14 +97,14 @@ export class KconfigLangHandler
 		}
 	}
 
-	private getDoc(uri: vscode.Uri): ParsedFile {
-		let doc = this.docs.find(d => d.uri.fsPath === uri.fsPath);
-		if (!doc) {
-			doc = new ParsedFile(uri);
-			this.docs.push(doc);
+	private getFile(doc: vscode.TextDocument): ParsedFile {
+		let file = this.files.find(d => d.uri.fsPath === doc.uri.fsPath);
+		if (!file) {
+			file = new ParsedFile(doc);
+			this.files.push(file);
 		}
 
-		return doc;
+		return file;
 	}
 
 	private parseDoc(d: ParsedFile) {
@@ -125,13 +124,13 @@ export class KconfigLangHandler
 			}),
 			vscode.window.onDidChangeActiveTextEditor((e) => {
 				if (e?.document.languageId === 'kconfig') {
-					this.parseDoc(this.getDoc(e.document.uri))
+					this.parseDoc(this.getFile(e.document))
 				}
 			}),
 
-			vscode.workspace.onDidChangeTextDocument(async e => {
+			vscode.workspace.onDidChangeTextDocument(e => {
 				if (e.document.languageId === 'kconfig') {
-					this.getDoc(e.document.uri).onDidChange(e);
+					this.getFile(e.document).onDidChange(e);
 				}
 			}),
 		);
@@ -155,7 +154,7 @@ export class KconfigLangHandler
 
 		const doc = vscode.window.activeTextEditor?.document;
 		if (doc?.languageId === 'kconfig') {
-			this.parseDoc(this.getDoc(doc.uri))
+			this.parseDoc(this.getFile(doc))
 		}
 	}
 
@@ -190,7 +189,7 @@ export class KconfigLangHandler
 	}
 
 	provideDocumentLinks(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.DocumentLink[] {
-		const doc = this.getDoc(document.uri);
+		const doc = this.getFile(document);
 		if (!doc.parsed) {
 			doc.parse();
 		}
@@ -202,9 +201,7 @@ export class KconfigLangHandler
 				: zephyr.zephyrBase?.fsPath ??
 				  vscode.workspace.workspaceFolders?.[0].uri.fsPath ??
 				  '';
-			const paths = glob.sync(
-				kEnv.resolvePath(i.path, base).fsPath
-			);
+			const paths = glob.sync(kEnv.resolvePath(i.path, base).path);
 			paths.forEach((p) => {
 				const link = new vscode.DocumentLink(i.range, vscode.Uri.file(p));
 				link.tooltip = path.relative(fileDir, p);
@@ -213,11 +210,10 @@ export class KconfigLangHandler
 
 			return all;
 		}, new Array<vscode.DocumentLink>());
-
 	}
 
 	provideDocumentSymbols(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.ProviderResult<vscode.DocumentSymbol[]> {
-		const doc = this.getDoc(document.uri);
+		const doc = this.getFile(document);
 		if (!doc.parsed) {
 			doc.parse();
 		}

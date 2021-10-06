@@ -4,42 +4,36 @@
  * SPDX-License-Identifier: MIT
  */
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { Scope, ConfigValueType, ConfigEntry, IfScope, MenuScope, ChoiceScope, ChoiceEntry, Comment, RootScope } from "./kconfig";
 import * as kEnv from './env';
 
 type FileInclusion = { range: vscode.Range; path: string; relative: boolean };
 
 export class ParsedFile {
-	readonly uri: vscode.Uri;
-
-	version: number;
 	inclusions: FileInclusion[];
 	entries: ConfigEntry[];
 	diags: vscode.Diagnostic[];
 	root: Scope;
 	parsed: boolean;
 
-	constructor(uri: vscode.Uri) {
-		this.uri = uri;
-
+	constructor(public readonly doc: vscode.TextDocument) {
 		this.inclusions = [];
 		this.entries = [];
 		this.diags = [];
 		this.root = new RootScope(this);
-		this.version = 0;
 		this.parsed = false;
 	}
 
+    get uri(): vscode.Uri {
+        return this.doc.uri;
+    }
+
 	onDidChange(change?: vscode.TextDocumentChangeEvent) {
-		if (!change || change?.document.version === this.version) {
+		if (!change) {
 			return;
 		}
 
-		this.version = change.document.version;
-
-		this.reset();
-		this.parseRaw(change ? change.document.getText() : kEnv.readFile(this.uri));
+        this.parse();
 	}
 
 	reset() {
@@ -50,13 +44,9 @@ export class ParsedFile {
 	}
 
 	parse() {
-		this.parseRaw(kEnv.readFile(this.uri));
-	}
-
-	private parseRaw(text: string) {
+        const text = this.doc.getText();
 		this.reset();
 		const scopes = [this.root];
-		const root = kEnv.getRoot();
 
 		var lines = text.split(/\r?\n/g);
 		if (!lines) {
@@ -236,19 +226,17 @@ export class ParsedFile {
 					}
 					break;
 
-				case 'choice':
+				case 'choice': {
 					match = getSymbol(rest);
+                    const path = vscode.workspace.asRelativePath(this.uri);
 					entry = new ChoiceEntry(
-						match ??
-							`<choice at ${path.relative(kEnv.getRoot().fsPath, this.uri.fsPath)}:${
-								lineNumber + 1
-							}>`,
+						match ?? `<choice at ${path}:${lineNumber + 1}>`,
 						lineNumber,
 						this
 					);
 					setScope(new ChoiceScope(entry as ChoiceEntry));
 					break;
-
+                }
 				case 'source':
 				case 'osource':
 				case 'orsource':
