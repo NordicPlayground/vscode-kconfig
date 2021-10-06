@@ -79,8 +79,8 @@ export async function startExtension() {
 export function activate(ctx: vscode.ExtensionContext) {
 	context = ctx;
 	if (!vscode.extensions.getExtension('nordic-semiconductor.nrf-connect')) {
+		startExtension();
 	}
-	startExtension();
 
 	return new Api();
 }
