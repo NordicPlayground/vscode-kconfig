@@ -40,6 +40,16 @@ function startServer(ctx: vscode.ExtensionContext) {
 		documentSelector: [
 			{
 				pattern: '**/*.conf',
+				scheme: 'file',
+			},
+			{
+				language: 'c',
+			},
+			{
+				language: 'cpp',
+			},
+			{
+				language: 'kconfig',
 			},
 		],
 

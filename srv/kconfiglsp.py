@@ -792,15 +792,19 @@ class KconfigContext:
 			self.cmd_diags.append(Diagnostic.err(
 				'Kconfig tree parse failed: ' + str(e), Range(Position.start(), Position.start())))
 
-	def symbol_at(self, uri, pos):
+	def symbol_at(self, uri: Uri, pos):
 		"""Get the symbol referenced at a given position in a conf file."""
 		doc = documentStore.get(uri)
 		if not doc:
 			return
 
 		word = doc.word_at(pos)
-		if word and word.startswith('CONFIG_'):
-			return self.get(word[len('CONFIG_'):])
+		if word:
+			if re.match(r'Kconfig.*', uri.basename):
+				return self.get(word)
+
+			if word.startswith('CONFIG_'):
+				return self.get(word[len('CONFIG_'):])
 
 	def __repr__(self):
 		return str(self.uri)
@@ -872,16 +876,18 @@ class KconfigServer(LSPServer):
 		Keeps track of the currently referenced context, and will prefer
 		this if it owns the given URI.
 		"""
+		is_conf_file = uri.basename.endswith('.conf')
+
 		if self.main_uri:
 			ctx = self.ctx.get(str(self.main_uri))
-			if ctx and ctx.has_file(uri):
+			if ctx and (ctx.has_file(uri) or not is_conf_file):
 				self.last_ctx = ctx
 				return ctx
 
-		if self.last_ctx and self.last_ctx.has_file(uri):
+		if self.last_ctx and (self.last_ctx.has_file(uri) or not is_conf_file):
 			return self.last_ctx
 
-		ctx = next((ctx for ctx in self.ctx.values() if ctx.has_file(uri)), None)
+		ctx = next((ctx for ctx in self.ctx.values() if (ctx.has_file(uri) or not is_conf_file)), None)
 		if ctx:
 			self.last_ctx = ctx
 		return ctx
