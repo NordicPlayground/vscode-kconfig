@@ -22,21 +22,7 @@ export function setWestEnv(env?: typeof process.env) {
 	}
 }
 
-export async function activate(ctx: vscode.ExtensionContext) {
-	vscode.commands.registerCommand('kconfig.add', () => {
-		vscode.window
-			.showOpenDialog({
-				canSelectFolders: true,
-				openLabel: 'Add',
-				defaultUri: vscode.workspace.workspaceFolders?.[0].uri,
-			})
-			?.then((uris) => {
-				if (uris) {
-					addBuild(uris[0]);
-				}
-			});
-	});
-
+function startServer(ctx: vscode.ExtensionContext) {
 	const pythonConfig = vscode.workspace.getConfiguration('python');
 	const python = pythonConfig.get<string>('defaultInterpreterPath') ?? 'python';
 
@@ -60,9 +46,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
 		diagnosticCollectionName: 'kconfig',
 	};
 
-	client = new LanguageClient('Zephyr Kconfig', serverOptions, clientOptions);
-	client.start();
+	client = new LanguageClient('Kconfig', serverOptions, clientOptions);
+	ctx.subscriptions.push(client.start());
+}
 
+async function addKconfigContexts() {
 	const caches = await vscode.workspace.findFiles(
 		'**/CMakeCache.txt',
 		'**/{twister,sanity}-out*'
@@ -81,6 +69,25 @@ export async function activate(ctx: vscode.ExtensionContext) {
 	cacheWatcher.onDidChange(addBuild);
 	cacheWatcher.onDidCreate(addBuild);
 	cacheWatcher.onDidDelete(removeBuild);
+}
+
+export function activate(ctx: vscode.ExtensionContext) {
+	vscode.commands.registerCommand('kconfig.add', () => {
+		vscode.window
+			.showOpenDialog({
+				canSelectFolders: true,
+				openLabel: 'Add',
+				defaultUri: vscode.workspace.workspaceFolders?.[0].uri,
+			})
+			?.then((uris) => {
+				if (uris) {
+					addBuild(uris[0]);
+				}
+			});
+	});
+
+	startServer(ctx);
+    return addKconfigContexts();
 }
 
 export function setMainBuild(uri?: vscode.Uri) {
