@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict
-import kconfiglib
+import kconfiglib as kconfig
 import sys
 import os
 import re
@@ -44,7 +44,7 @@ class KconfigErrorCode(enum.IntEnum):
 	DESYNC = 2 # The kconfig data has been changed, and the menu tree is out of sync.
 	PARSING_FAILED = 3 # Kconfig tree couldn't be parsed.
 
-class Kconfig(kconfiglib.Kconfig):
+class Kconfig(kconfig.Kconfig):
 	def __init__(self, filename='Kconfig'):
 		"""
 		Wrapper of kconfiglib's Kconfig object.
@@ -84,7 +84,7 @@ class Kconfig(kconfiglib.Kconfig):
 			doc.open(mode)
 			return doc
 		if os.path.isdir(filename):
-			raise kconfiglib.KconfigError(f'Attempting to open directory {filename} as file @{self.filename}:{self.linenr}')
+			raise kconfig.KconfigError(f'Attempting to open directory {filename} as file @{self.filename}:{self.linenr}')
 		return super()._open(filename, mode)
 
 	def _warn(self, msg: str, filename=None, linenr=None):
@@ -113,7 +113,7 @@ class Kconfig(kconfiglib.Kconfig):
 		self.diags[filename].append(Diagnostic(msg, Position(int(linenr-1), 0).range, KCONFIG_WARN_LVL))
 
 
-def _prompt(sym: kconfiglib.Symbol, ignore_expr=False):
+def _prompt(sym: kconfig.Symbol, ignore_expr=False):
 	"""
 	Get the most accessible prompt for a given kconfig Symbol.
 
@@ -123,13 +123,13 @@ def _prompt(sym: kconfiglib.Symbol, ignore_expr=False):
 	This'll only consider prompts whose if expressions are true.
 	"""
 	for node in sym.nodes:
-		if node.prompt and (ignore_expr or kconfiglib.expr_value(node.prompt[1])):
+		if node.prompt and (ignore_expr or kconfig.expr_value(node.prompt[1])):
 			return node.prompt[0]
 
 def _visible(node):
 	"""Check whether a node is visible."""
-	return node.prompt and kconfiglib.expr_value(node.prompt[1]) and not \
-	    (node.item == kconfiglib.MENU and not kconfiglib.expr_value(node.visibility))
+	return node.prompt and kconfig.expr_value(node.prompt[1]) and not \
+	    (node.item == kconfig.MENU and not kconfig.expr_value(node.visibility))
 
 def _children(node):
 	"""Get the child nodes of a given MenuNode"""
@@ -141,20 +141,20 @@ def _children(node):
 			node = node.next
 		return children
 
-	if isinstance(node.item, kconfiglib.Choice):
+	if isinstance(node.item, kconfig.Choice):
 		# Choices may be appended to in multiple locations.
 		# For ease of use, gather all options added to this choice, so users
 		# can see all valid option in every location.
 		# See menuconfig.py's _shown_nodes for additional info.
-		choice: kconfiglib.Choice = node.item
+		choice: kconfig.Choice = node.item
 		children = []
 		# Gather the current node's symbols first, so those are preferred when the symbol
 		# is added in multiple places:
-		symbols = {n.item for n in get_children(node) if isinstance(n, kconfiglib.Symbol)}
+		symbols = {n.item for n in get_children(node) if isinstance(n, kconfig.Symbol)}
 
 		for choice_node in choice.nodes:
 			for child in get_children(choice_node):
-				if not isinstance(child, kconfiglib.Symbol):
+				if not isinstance(child, kconfig.Symbol):
 					children.append(child)
 				elif child.item not in symbols or choice_node is node:
 					children.append(child)
@@ -190,15 +190,15 @@ def _path(node):
 		return _path(node.parent) + [i]
 	return [0]
 
-def _loc(sym: kconfiglib.Symbol):
+def _loc(sym: kconfig.Symbol):
 	"""Get a list of locations where the given kconfig symbol is defined"""
 	return [Location(Uri.file(os.path.join(n.kconfig.srctree, n.filename)), Position(n.linenr-1, 0).range) for n in sym.nodes]
 
-def _symbolitem(sym: kconfiglib.Symbol):
+def _symbolitem(sym: kconfig.Symbol):
 	item = {
 		'name': sym.name,
 		'visible': sym.visibility > 0,
-		'type': kconfiglib.TYPE_TO_STR[sym.type],
+		'type': kconfig.TYPE_TO_STR[sym.type],
 		'help': next((n.help for n in sym.nodes if n.help), '')
 	}
 
@@ -216,12 +216,12 @@ def _missing_deps(sym):
 	"""
 	Get a list of the dependency expressions that fail for a symbol
 	"""
-	deps = kconfiglib.split_expr(sym.direct_dep, kconfiglib.AND)
-	return [dep for dep in deps if kconfiglib.expr_value(dep) == 0]
+	deps = kconfig.split_expr(sym.direct_dep, kconfig.AND)
+	return [dep for dep in deps if kconfig.expr_value(dep) == 0]
 
 
 class KconfigMenu:
-	def __init__(self, ctx, node: kconfiglib.MenuNode, id, show_all):
+	def __init__(self, ctx, node: kconfig.MenuNode, id, show_all):
 		"""
 		A single level in a Menuconfig menu.
 		"""
@@ -234,13 +234,13 @@ class KconfigMenu:
 	def name(self):
 		return str(self.node)
 
-	def _menuitem(self, node:kconfiglib.MenuNode):
+	def _menuitem(self, node:kconfig.MenuNode):
 		sym = node.item
 		item = {
 			'visible': _visible(node) != 0,
 			'loc': Location(Uri.file(os.path.join(self.ctx.env['ZEPHYR_BASE'], node.filename)), Position(node.linenr - 1, 0).range),
 			'isMenu': node.is_menuconfig,
-			'hasChildren': node.list != None or isinstance(sym, kconfiglib.Choice),
+			'hasChildren': node.list != None or isinstance(sym, kconfig.Choice),
 			'depth': _suboption_depth(node),
 			'id': self.ctx._node_id(node),
 		}
@@ -251,20 +251,20 @@ class KconfigMenu:
 		if hasattr(node, 'help') and node.help:
 			item['help'] = node.help
 
-		if isinstance(sym, kconfiglib.Symbol):
-			item['type'] = kconfiglib.TYPE_TO_STR[sym.orig_type]
+		if isinstance(sym, kconfig.Symbol):
+			item['type'] = kconfig.TYPE_TO_STR[sym.orig_type]
 			item['val'] = sym.str_value
 			item['userValue'] = sym.user_value
 			item['name'] = sym.name
 			if hasattr(sym, 'assignable') and sym.assignable:
 				item['options'] = list(sym.assignable)
 			item['kind'] = 'symbol'
-		elif isinstance(sym, kconfiglib.Choice):
+		elif isinstance(sym, kconfig.Choice):
 			item['val'] = _prompt(sym.selection)
 			item['kind'] = 'choice'
-		elif sym == kconfiglib.COMMENT:
+		elif sym == kconfig.COMMENT:
 			item['kind'] = 'comment'
-		elif sym == kconfiglib.MENU:
+		elif sym == kconfig.MENU:
 			item['kind'] = 'menu'
 		else:
 			item['kind'] = 'unknown'
@@ -322,7 +322,7 @@ class ConfEntry:
 
 	@property
 	def value(self):
-		"""Value assigned in the entry, as seen by kconfiglib"""
+		"""Value assigned in the entry, as seen by kconfig"""
 		if self.is_string():
 			return self.raw[1:-1] # strip out quotes
 		if self.is_bool():
@@ -336,15 +336,15 @@ class ConfEntry:
 	def type(self):
 		"""Human readable entry type, derived from the assigned value."""
 		if self.is_string():
-			return kconfiglib.TYPE_TO_STR[kconfiglib.STRING]
+			return kconfig.TYPE_TO_STR[kconfig.STRING]
 		if self.is_hex():
-			return kconfiglib.TYPE_TO_STR[kconfiglib.HEX]
+			return kconfig.TYPE_TO_STR[kconfig.HEX]
 		if self.is_int():
-			return kconfiglib.TYPE_TO_STR[kconfiglib.INT]
+			return kconfig.TYPE_TO_STR[kconfig.INT]
 		if self.is_bool():
-			return kconfiglib.TYPE_TO_STR[kconfiglib.BOOL]
+			return kconfig.TYPE_TO_STR[kconfig.BOOL]
 
-		return kconfiglib.TYPE_TO_STR[kconfiglib.UNKNOWN]
+		return kconfig.TYPE_TO_STR[kconfig.UNKNOWN]
 
 	@property
 	def line_range(self):
@@ -431,7 +431,7 @@ class KconfigContext:
 		"""
 		Apply the context environment for the entire process.
 
-		kconfiglib will access os.environ without a wrapper to
+		kconfig will access os.environ without a wrapper to
 		resolve variables like ZEPHYR_BASE.
 		"""
 		for key, value in self.env.items():
@@ -444,7 +444,7 @@ class KconfigContext:
 	def parse(self):
 		"""
 		Parse the full kconfig tree.
-		Will set up the environment and invoke kconfiglib to parse the entire kconfig
+		Will set up the environment and invoke kconfig to parse the entire kconfig
 		file tree. This is only necessary to do once - or if any files in the Kconfig
 		file tree changes.
 
@@ -459,7 +459,7 @@ class KconfigContext:
 
 		try:
 			self._kconfig.parse()
-		except kconfiglib.KconfigError as e:
+		except kconfig.KconfigError as e:
 			loc = self._kconfig.loc()
 
 			# Strip out the GCC-style location indicator that is placed on the start of the
@@ -497,20 +497,20 @@ class KconfigContext:
 		"""Check whether the given URI represents a conf file this context uses. Does not check board files."""
 		return any([(file.uri == uri) for file in self.conf_files if file.doc]) or self.board.conf_file.uri == uri
 
-	def _node_id(self, node: kconfiglib.MenuNode):
+	def _node_id(self, node: kconfig.MenuNode):
 		"""Encode a unique ID string for the given menu node"""
 		if not self._kconfig:
 			return ''
 
 		if node == self._kconfig.top_node:
 			parts = ['MAINMENU']
-		elif node.item == kconfiglib.MENU:
+		elif node.item == kconfig.MENU:
 			parts = ['MENU', str(self._kconfig.menus.index(node))]
-		elif isinstance(node.item, kconfiglib.Symbol):
+		elif isinstance(node.item, kconfig.Symbol):
 			parts = ['SYM', node.item.name, str(node.item.nodes.index(node))]
-		elif isinstance(node.item, kconfiglib.Choice):
+		elif isinstance(node.item, kconfig.Choice):
 			parts = ['CHOICE', str(self._kconfig.choices.index(node.item)), str(node.item.nodes.index(node))]
-		elif node.item == kconfiglib.COMMENT:
+		elif node.item == kconfig.COMMENT:
 			parts = ['COMMENT', str(self._kconfig.comments.index(node))]
 		else:
 			parts = ['UNKNOWN', node.filename, str(node.linenr)]
@@ -572,7 +572,7 @@ class KconfigContext:
 		if sym:
 			sym.unset_value()
 
-	def get(self, name) -> kconfiglib.Symbol:
+	def get(self, name) -> kconfig.Symbol:
 		"""Get a kconfig symbol based on its name. The name should NOT include the CONFIG_ prefix."""
 		if self._kconfig:
 			return self._kconfig.syms.get(name)
@@ -615,22 +615,22 @@ class KconfigContext:
 
 	# Link checks for config file entries:
 
-	def check_undefined(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
-		if sym.type == kconfiglib.UNKNOWN:
+	def check_undefined(self, file: ConfFile, entry: ConfEntry, sym: kconfig.Symbol):
+		if sym.type == kconfig.UNKNOWN:
 			file.diags.append(Diagnostic.err(f'Undefined symbol CONFIG_{sym.name}', entry.full_range))
 			return True
 
-	def check_type(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+	def check_type(self, file: ConfFile, entry: ConfEntry, sym: kconfig.Symbol):
 		"""Check that the configured value has the right type."""
-		if kconfiglib.TYPE_TO_STR[sym.type] != entry.type:
+		if kconfig.TYPE_TO_STR[sym.type] != entry.type:
 			diag = Diagnostic.err(
-				f'Invalid type. Expected {kconfiglib.TYPE_TO_STR[sym.type]}', entry.full_range)
+				f'Invalid type. Expected {kconfig.TYPE_TO_STR[sym.type]}', entry.full_range)
 
 			# Add action to convert between hex and int:
-			if sym.type in [kconfiglib.HEX, kconfiglib.INT] and (entry.is_hex() or entry.is_int()):
+			if sym.type in [kconfig.HEX, kconfig.INT] and (entry.is_hex() or entry.is_int()):
 				action = CodeAction(
-					'Convert value to ' + str(kconfiglib.TYPE_TO_STR[sym.type]))
-				if sym.type == kconfiglib.HEX:
+					'Convert value to ' + str(kconfig.TYPE_TO_STR[sym.type]))
+				if sym.type == kconfig.HEX:
 					action.edit.add(entry.loc.uri, TextEdit(
 						entry.value_range, hex(entry.value)))
 				else:
@@ -641,11 +641,11 @@ class KconfigContext:
 			file.diags.append(diag)
 			return True
 
-	def check_assignment(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+	def check_assignment(self, file: ConfFile, entry: ConfEntry, sym: kconfig.Symbol):
 		"""Check that the assigned value actually was propagated."""
 		user_value = sym.user_value
-		if sym.type in [kconfiglib.BOOL, kconfiglib.TRISTATE]:
-			user_value = kconfiglib.TRI_TO_STR[user_value]
+		if sym.type in [kconfig.BOOL, kconfig.TRISTATE]:
+			user_value = kconfig.TRI_TO_STR[user_value]
 
 		actions = []
 		if user_value == sym.str_value:
@@ -663,11 +663,11 @@ class KconfigContext:
 		deps = _missing_deps(sym)
 		if deps:
 			msg += ' Missing dependencies:\n'
-			msg += ' && '.join([kconfiglib.expr_str(dep) for dep in deps])
+			msg += ' && '.join([kconfig.expr_str(dep) for dep in deps])
 			edits = []
 
 			for dep in deps:
-				if isinstance(dep, kconfiglib.Symbol) and dep.type == kconfiglib.BOOL:
+				if isinstance(dep, kconfig.Symbol) and dep.type == kconfig.BOOL:
 					dep_entry = next((entry for entry in file.entries() if entry.name == dep.name), None)
 					if dep_entry:
 						edits.append({'dep': dep.name, 'edit': TextEdit(dep_entry.value_range, 'y')})
@@ -681,7 +681,7 @@ class KconfigContext:
 			elif len(edits) > 1:
 				action = CodeAction(f'Enable {len(edits)} entries to resolve dependencies')
 
-				# Dependencies are registered with a "nearest first" approach in kconfiglib.
+				# Dependencies are registered with a "nearest first" approach in kconfig.
 				# As the nearest dependency is likely lowest in the menu hierarchy, we'll
 				# reverse the list of edits, so the highest dependency is inserted first:
 				edits.reverse()
@@ -701,7 +701,7 @@ class KconfigContext:
 			file.diags.append(diag)
 			return True
 
-	def check_visibility(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+	def check_visibility(self, file: ConfFile, entry: ConfEntry, sym: kconfig.Symbol):
 		"""Check whether the configuration entry actually can be set in config files."""
 		if not any(node.prompt for node in sym.nodes):
 			diag = Diagnostic.warn(f'Symbol CONFIG_{entry.name} cannot be set (has no prompt)', entry.full_range)
@@ -709,7 +709,7 @@ class KconfigContext:
 			file.diags.append(diag)
 			return True
 
-	def check_defaults(self, file: ConfFile, entry: ConfEntry, sym: kconfiglib.Symbol):
+	def check_defaults(self, file: ConfFile, entry: ConfEntry, sym: kconfig.Symbol):
 		"""Check whether an entry's value matches the default value, and mark it as redundant"""
 		if sym._str_default() == sym.user_value:
 			diag = Diagnostic.hint(f'Value is {entry.raw} by default', entry.full_range)
@@ -740,7 +740,7 @@ class KconfigContext:
 		Adds diagnostics to the failing entries to help developers fix errors
 		that will come up when compiling. Reimplements some checks from
 		generate_config.py that show up during the build, as these aren't
-		part of kconfiglib.
+		part of kconfig.
 		"""
 		all_entries = self.all_entries()
 		for file in self.conf_files:
@@ -749,7 +749,7 @@ class KconfigContext:
 				if not entry.name in self._kconfig.syms:
 					continue
 
-				sym: kconfiglib.Symbol = self._kconfig.syms[entry.name]
+				sym: kconfig.Symbol = self._kconfig.syms[entry.name]
 				if self.check_undefined(file, entry, sym):
 					continue
 				if self.check_type(file, entry, sym):
@@ -1040,19 +1040,19 @@ class KconfigServer(LSPServer):
 		else:
 			word = None
 
-		def insert_text(sym: kconfiglib.Symbol):
+		def insert_text(sym: kconfig.Symbol):
 			insert = Snippet('CONFIG_')
 			insert.add_text(sym.name)
 			insert.add_text('=')
-			if sym.type in [kconfiglib.BOOL, kconfiglib.TRISTATE]:
-				choices = [kconfiglib.TRI_TO_STR[val] for val in list(sym.assignable)]
+			if sym.type in [kconfig.BOOL, kconfig.TRISTATE]:
+				choices = [kconfig.TRI_TO_STR[val] for val in list(sym.assignable)]
 				choices.reverse() # sym.assignable shows 'n' first, but user normally wants 'y'
 				insert.add_choice(choices)
-			elif sym.type == kconfiglib.STRING:
+			elif sym.type == kconfig.STRING:
 				insert.add_text('"')
 				insert.add_tabstop()
 				insert.add_text('"')
-			elif sym.type == kconfiglib.HEX:
+			elif sym.type == kconfig.HEX:
 				insert.add_text('0x')
 			else:
 				pass # freeform value
@@ -1062,7 +1062,7 @@ class KconfigServer(LSPServer):
 		items = [{
 				'label': 'CONFIG_' + sym.name,
 				'kind': CompletionItemKind.VARIABLE,
-				'detail': kconfiglib.TYPE_TO_STR[sym.type],
+				'detail': kconfig.TYPE_TO_STR[sym.type],
 				'documentation': next((n.help.replace('\n', ' ') for n in sym.nodes if n.help), ' '),
 				'insertText': insert_text(sym),
 				'insertTextFormat': InsertTextFormat.SNIPPET
@@ -1106,7 +1106,7 @@ class KconfigServer(LSPServer):
 			contents.add_text(prompt)
 
 		contents.paragraph()
-		contents.add_markdown('Type: `{}`'.format(kconfiglib.TYPE_TO_STR[sym.type]))
+		contents.add_markdown('Type: `{}`'.format(kconfig.TYPE_TO_STR[sym.type]))
 		if len(sym.str_value) > 0:
 			contents.linebreak()
 			contents.add_markdown('Value: `{}`'.format(sym.str_value))
@@ -1148,7 +1148,7 @@ class KconfigServer(LSPServer):
 		if not ctx or not ctx.valid:
 			return
 
-		def sym_info(sym: kconfiglib.Symbol):
+		def sym_info(sym: kconfig.Symbol):
 			return SymbolInformation('CONFIG_' + sym.name, SymbolKind.PROPERTY, _loc(sym)[0], _prompt(sym, True))
 
 		return [sym_info(s) for s in ctx.symbols(query) if len(s.nodes)]
