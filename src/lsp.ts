@@ -68,11 +68,11 @@ async function addKconfigContexts() {
 
 	await client.onReady();
 
-	caches.map((cache) =>
+	await Promise.all(caches.map((cache) =>
 		addBuild(vscode.Uri.parse(path.dirname(cache.fsPath))).catch((err) => {
 			/* Ignore */
 		})
-	);
+	));
 
 	const cacheWatcher = vscode.workspace.createFileSystemWatcher('**/CMakeCache.txt');
 
