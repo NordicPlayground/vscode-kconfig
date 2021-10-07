@@ -132,8 +132,8 @@ export class KconfigLangHandler
 			}),
 
 			vscode.workspace.onDidChangeTextDocument((e) => {
-				if (e.document.languageId === 'kconfig') {
-					this.getFile(e.document).onDidChange(e);
+				if (e.contentChanges.length > 0 && e.document.languageId === 'kconfig') {
+					this.parseDoc(this.getFile(e.document));
 				}
 			})
 		);

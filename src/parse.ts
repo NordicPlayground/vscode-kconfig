@@ -38,14 +38,6 @@ export class ParsedFile {
 		return this.doc.uri;
 	}
 
-	onDidChange(change?: vscode.TextDocumentChangeEvent) {
-		if (!change) {
-			return;
-		}
-
-		this.parse();
-	}
-
 	reset() {
 		this.diags = [];
 		this.entries = [];
