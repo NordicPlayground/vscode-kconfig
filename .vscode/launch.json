@@ -18,18 +18,6 @@
             "preLaunchTask": "${defaultBuildTask}"
         },
         {
-            "name": "Launch Extension",
-            "type": "extensionHost",
-            "request": "launch",
-            "runtimeExecutable": "${execPath}",
-            "args": [
-                "--extensionDevelopmentPath=${workspaceFolder}"
-            ],
-            "outFiles": [
-                "${workspaceFolder}/dist/**/*.js"
-            ]
-        },
-        {
             "name": "Attach to language server",
             "type": "python",
             "request": "attach",
@@ -49,16 +37,6 @@
             "sourceMaps": true,
             "outFiles": [
                 "${workspaceRoot}/dist/test/**/*.js"
-            ],
-            "preLaunchTask": "npm: webpack"
-        }
-    ],
-    "compounds": [
-        {
-            "name": "LSP debugging",
-            "configurations": [
-                "Launch Extension",
-                "Attach to language server"
             ],
             "preLaunchTask": "npm: webpack"
         }
