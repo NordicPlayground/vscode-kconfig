@@ -8,5 +8,11 @@
 		"srv"
 	],
 	"python.testing.unittestEnabled": false,
-	"python.testing.pytestEnabled": true
+	"python.testing.pytestEnabled": true,
+	"python.formatting.provider": "yapf",
+	"[python]": {
+		"editor.insertSpaces": true,
+		"editor.detectIndentation": false,
+		"editor.formatOnSave": true
+	}
 }
