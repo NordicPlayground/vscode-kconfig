@@ -34,6 +34,10 @@ export function setZephyrBase(uri: vscode.Uri): void {
 }
 
 export async function activate() {
+	if (zephyrBase) {
+		return;
+	}
+
 	const configured = kEnv.getConfig('zephyr.base');
 	if (configured) {
 		zephyrBase = kEnv.resolvePath(configured);
