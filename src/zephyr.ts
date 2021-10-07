@@ -41,6 +41,8 @@ export async function activate() {
 	const configured = kEnv.getConfig('zephyr.base');
 	if (configured) {
 		zephyrBase = kEnv.resolvePath(configured);
+	} else if ('ZEPHYR_BASE' in kEnv.get()) {
+		zephyrBase = kEnv.resolvePath(kEnv.get()['ZEPHYR_BASE']!);
 	} else {
 		const uris = await vscode.workspace.findFiles('**/Kconfig.zephyr');
 		if (uris.length) {
