@@ -139,8 +139,7 @@ export class KconfigLangHandler
 		);
 
 		const kconfig = [
-			{ language: 'kconfig', scheme: 'file' },
-			{ language: 'kconfig', scheme: 'kconfig' },
+			{ language: 'kconfig', scheme: 'file' }
 		];
 
 		context.subscriptions.push(
