@@ -1086,22 +1086,22 @@ class KconfigServer(LSPServer):
 
 	@handler('textDocument/hover')
 	def handle_hover(self, params):
+		uri = Uri.parse(params['textDocument']['uri'])
 		sym = self.get_sym(params)
 		if not sym:
 			return
 
 		contents = MarkupContent('')
 
-		prompt = next((node.prompt[0] for node in sym.nodes if node.prompt), None)
+		prompt = _prompt(sym, True)
 		if prompt:
 			contents.add_text(prompt)
-		else:
-			contents.add_text(sym.name_and_loc)
 
 		contents.paragraph()
 		contents.add_markdown('Type: `{}`'.format(kconfiglib.TYPE_TO_STR[sym.type]))
-		contents.linebreak()
-		contents.add_markdown("Value: `{}`".format(sym.str_value))
+		if len(sym.str_value) > 0:
+			contents.linebreak()
+			contents.add_markdown('Value: `{}`'.format(sym.str_value))
 		contents.paragraph()
 
 		help = '\n\n'.join([n.help.replace('\n', ' ') for n in sym.nodes if n.help])
