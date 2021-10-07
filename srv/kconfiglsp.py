@@ -627,7 +627,9 @@ class KconfigContext:
         """Clear all diagnostics"""
         if self._kconfig:
             self._kconfig.diags.clear()
-        self.kconfig_diags.clear()
+        for list in self.kconfig_diags.values():
+            list.clear()
+
         self.cmd_diags.clear()
         for conf in self.conf_files:
             conf.diags.clear()
