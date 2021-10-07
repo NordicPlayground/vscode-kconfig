@@ -189,7 +189,6 @@ export async function addBuild(uri: vscode.Uri) {
 		ZEPHYR_TOOLCHAIN_VARIANT: cache['ZEPHYR_TOOLCHAIN_VARIANT']?.[0],
 		PYTHON_EXECUTABLE: cache['PYTHON_PREFER_EXECUTABLE']?.[0],
 		srctree: cache['ZEPHYR_BASE']?.[0],
-		// KERNELVERSION:
 		KCONFIG_CONFIG: vscode.Uri.joinPath(uri, 'zephyr', '.config').fsPath,
 		ARCH: arch,
 		ARCH_DIR: path.join(cache['ZEPHYR_BASE'][0], 'arch'),
@@ -215,8 +214,6 @@ export async function addBuild(uri: vscode.Uri) {
 		SHIELD_AS_LIST: cache['CACHED_SHIELD']?.join('\\;'),
 		DTS_POST_CPP: vscode.Uri.joinPath(uri, 'zephyr', `${board}.dts.pre.tmp`).fsPath,
 		DTS_ROOT_BINDINGS: cache['CACHED_DTS_ROOT_BINDINGS'].join('?'),
-
-		// KCONFIG_FUNCTIONS: path.join(cache['ZEPHYR_BASE'][0], 'scripts', 'kconfig', 'kconfigfunctions')
 	});
 
 	return client.sendRequest<BuildResponse>('kconfig/addBuild', {
