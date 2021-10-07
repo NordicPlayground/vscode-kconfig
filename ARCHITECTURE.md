@@ -21,6 +21,7 @@ The Kconfig language features are implemented in three files:
 
 The language server is implemented in Python, and uses kconfiglib as a backend. Kconfiglib is imported unchanged from the Zephyr repo, and takes care of the entire Kconfig language parsing and indexing mechanism.
 
+```
 ┌────────────────────────────────┐
 │                                │
 │         kconfiglsp.py          │
@@ -34,6 +35,7 @@ The language server is implemented in Python, and uses kconfiglib as a backend. 
 │   rpc.py   │                   │
 │            │                   │
 └────────────┴───────────────────┘
+```
 
 The entrie language server is implemented under srv/, and only uses standard Python libraries, with no third-party dependencies.
 
