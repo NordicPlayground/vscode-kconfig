@@ -730,6 +730,8 @@ export class ParsedFile {
 		}
 
 		if (scopes.length > 1) {
+			scopes.forEach(scope => scope.lines.end = lines.length);
+
 			const s = scopes.pop()!;
 			this.diags.push(
 				new vscode.Diagnostic(
