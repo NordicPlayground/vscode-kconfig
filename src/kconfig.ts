@@ -6,10 +6,8 @@
 import * as vscode from 'vscode';
 import { ParsedFile } from './parse';
 
-export type ConfigValue = string | number | boolean;
 export type ConfigValueRange = { max: string; min: string; condition?: string };
 export type ConfigValueType = 'string' | 'int' | 'hex' | 'bool' | 'tristate';
-export type ConfigKind = 'config' | 'menuconfig' | 'choice';
 export type ConfigDefault = { value: string; condition?: string };
 export type ConfigSelect = { name: string; condition?: string };
 export type ConfigDependency = { expr: string; condition?: string };
