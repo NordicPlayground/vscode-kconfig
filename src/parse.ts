@@ -176,7 +176,7 @@ export class ParsedFile {
 					expr = rest.slice(0, match.index! + 1);
 				}
 
-				const condition = getIf(match?.[0] ?? '');
+				const condition = getIf(match?.[0].trim() ?? '');
 				if (condition instanceof vscode.Diagnostic) {
 					return condition;
 				}
