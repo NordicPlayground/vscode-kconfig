@@ -424,6 +424,7 @@ class KconfigContext:
 		self._kconfig: Optional[Kconfig] = None
 		self.menu = None
 		self.cmd_diags: List[Diagnostic] = []
+		self.last_access = 0
 		self.kconfig_diags: Dict[str, List[Diagnostic]] = {}
 
 	def initialize_env(self):
@@ -824,8 +825,8 @@ class KconfigServer(LSPServer):
 		This will keep running until KconfigServer.running is false.
 		"""
 		super().__init__('zephyr-kconfig', VERSION, istream, ostream)
-		self.last_ctx = None
 		self.main_uri = None
+		self.access_count = 0
 		self.ctx: Dict[str, KconfigContext] = {}
 		self.dbg('Python version: ' + sys.version)
 
@@ -878,18 +879,26 @@ class KconfigServer(LSPServer):
 		"""
 		is_conf_file = uri.basename.endswith('.conf')
 
-		if self.main_uri:
-			ctx = self.ctx.get(str(self.main_uri))
-			if ctx and (ctx.has_file(uri) or not is_conf_file):
-				self.last_ctx = ctx
+		ctx = self.ctx.get(str(self.main_uri))
+		if ctx:
+			if not is_conf_file or ctx.has_file(uri):
+				self.access_count += 1
+				ctx.last_access = self.access_count
 				return ctx
 
-		if self.last_ctx and (self.last_ctx.has_file(uri) or not is_conf_file):
-			return self.last_ctx
+		# Candidate contexts are all contexts that has the file:
+		if is_conf_file:
+			candidates = filter(lambda ctx: ctx.has_file(uri), self.ctx.values())
+		else:
+			candidates = self.ctx.values()
 
-		ctx = next((ctx for ctx in self.ctx.values() if (ctx.has_file(uri) or not is_conf_file)), None)
+		# Get most recent candidate:
+		ctx = [None, *sorted(candidates, key=lambda ctx: ctx.last_access)].pop()
+
 		if ctx:
-			self.last_ctx = ctx
+			self.access_count += 1
+			ctx.last_access = self.access_count
+
 		return ctx
 
 	def get_sym(self, params):
