@@ -1,3 +1,7 @@
+# Copyright (c) 2021 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-1-Clause
+
 from typing import Optional, List, Dict
 import kconfiglib as kconfig
 import sys

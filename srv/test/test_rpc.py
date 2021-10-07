@@ -1,3 +1,7 @@
+# Copyright (c) 2021 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-1-Clause
+
 import json
 import sys
 from rpc import RPCError, RPCServer, handler
