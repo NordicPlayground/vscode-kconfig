@@ -1087,7 +1087,15 @@ class KconfigServer(LSPServer):
 	@handler('textDocument/hover')
 	def handle_hover(self, params):
 		uri = Uri.parse(params['textDocument']['uri'])
-		sym = self.get_sym(params)
+		ctx = self.best_ctx(uri)
+		if not ctx:
+			self.dbg('No context for {}'.format(uri.path))
+			return
+
+		if not ctx.valid:
+			self.refresh_ctx(ctx)
+
+		sym = ctx.symbol_at(uri, Position.create(params['position']))
 		if not sym:
 			return
 
@@ -1107,6 +1115,11 @@ class KconfigServer(LSPServer):
 		help = '\n\n'.join([n.help.replace('\n', ' ') for n in sym.nodes if n.help])
 		if help:
 			contents.add_text(help)
+
+		if not uri.basename.endswith('.conf') and len(ctx.conf_files) != 0:
+			contents.paragraph()
+			contents.add_markdown('_Kconfig environment: [{}]({})_'.format(
+				os.path.relpath(ctx.uri.path, os.path.join(ctx.uri.path, '..', '..')), ctx.conf_files[0].uri))
 
 		return {'contents': contents}
 
