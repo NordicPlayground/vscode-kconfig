@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import * as kEnv from './env';
 import * as path from 'path';
 
-export var zephyrBase: vscode.Uri | undefined;
+export let zephyrBase: vscode.Uri | undefined;
 
 export function getConfig(): { [name: string]: string } {
 	const conf = {
@@ -33,7 +33,7 @@ export function setZephyrBase(uri: vscode.Uri): void {
 	zephyrBase = uri;
 }
 
-export async function activate() {
+export async function activate(): Promise<void> {
 	if (zephyrBase) {
 		return;
 	}

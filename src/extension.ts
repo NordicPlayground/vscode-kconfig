@@ -9,10 +9,10 @@ import * as lsp from './lsp';
 import Api from './api';
 import { KconfigLangHandler } from './langHandler';
 
-export var langHandler: KconfigLangHandler | undefined;
-var context: vscode.ExtensionContext;
+export let langHandler: KconfigLangHandler | undefined;
+let context: vscode.ExtensionContext;
 
-export async function startExtension() {
+export async function startExtension(): Promise<void> {
 	await zephyr.activate();
 
 	langHandler = new KconfigLangHandler();
@@ -21,7 +21,7 @@ export async function startExtension() {
 	await lsp.activate(context);
 }
 
-export function activate(ctx: vscode.ExtensionContext) {
+export function activate(ctx: vscode.ExtensionContext): Api {
 	context = ctx;
 	if (!vscode.extensions.getExtension('nordic-semiconductor.nrf-connect')) {
 		startExtension();
@@ -30,7 +30,7 @@ export function activate(ctx: vscode.ExtensionContext) {
 	return new Api();
 }
 
-export function deactivate() {
+export function deactivate(): void {
 	langHandler?.deactivate();
 	lsp.stop();
 }

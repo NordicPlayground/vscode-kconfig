@@ -118,7 +118,9 @@ export class ChoiceScope extends Scope {
 		return this.choice.prompt || this.choice.name;
 	}
 
-	set name(name: string) {}
+	set name(name: string) {
+		/* do nothing */
+	}
 }
 
 export class RootScope extends Scope {
@@ -151,7 +153,7 @@ export class ConfigEntry {
 		this.defaults = [];
 	}
 
-	extend(lineNumber: number) {
+	extend(lineNumber: number): void {
 		if (lineNumber < this.lines.start) {
 			throw new Error("Extending upwards, shouldn't be possible.");
 		}

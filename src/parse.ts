@@ -15,7 +15,6 @@ import {
 	Comment,
 	RootScope,
 } from './kconfig';
-import * as kEnv from './env';
 
 type FileInclusion = { range: vscode.Range; path: string; relative: boolean };
 
@@ -25,6 +24,8 @@ export class ParsedFile {
 	diags: vscode.Diagnostic[];
 	root: Scope;
 	parsed: boolean;
+	lineRange: vscode.Range | undefined;
+	line = '';
 
 	constructor(public readonly doc: vscode.TextDocument) {
 		this.inclusions = [];
@@ -38,19 +39,102 @@ export class ParsedFile {
 		return this.doc.uri;
 	}
 
-	reset() {
+	reset(): void {
 		this.diags = [];
 		this.entries = [];
 		this.inclusions = [];
 		this.root = new RootScope(this);
 	}
 
-	parse() {
+	private getString(text: string) {
+		const match = text.match(/^"(.*?)"\s*(?:$|#.*)/) ?? text.match(/^(\S+)\s*(?:$|#.*)/);
+		return match?.[1];
+	}
+
+	private getSymbol(text: string) {
+		return text.match(/^((?:\w+|\$\([\w-]+\))+)\s*(?:$|#.*)/)?.[1];
+	}
+
+	private getNumber(text: string) {
+		return text.match(/^[+-]?(0x[a-f\d]+|\d+)\b/)?.[0];
+	}
+
+	private getExpression(text: string) {
+		if (text.startsWith('"')) {
+			return this.getString(text);
+		}
+
+		return (
+			this.getNumber(text) ??
+			text.match(
+				/^((?:(\|\||&&|!?\s*\(|[)<>]|[!<>]?=|"[^"]*"|'[^']*'|!?\s*\w+\b|!?\$\(.*\))\s*)+)\s*(?:$|#.*)/
+			)?.[1]
+		);
+	}
+
+	private getIf(text: string): string | undefined | vscode.Diagnostic {
+		const ifMatch = text.match(/^\bif\s+(.*)/);
+		const ifRange = this.lineRange!.with({
+			start: new vscode.Position(
+				this.lineRange!.start.line,
+				this.line.indexOf('if') + 'if'.length
+			),
+		});
+
+		if (ifMatch) {
+			const expr = this.getExpression(ifMatch[1]);
+			if (!expr) {
+				return new vscode.Diagnostic(
+					ifRange,
+					'Invalid expression',
+					vscode.DiagnosticSeverity.Error
+				);
+			}
+
+			return expr;
+		}
+
+		if (text.startsWith('if')) {
+			return new vscode.Diagnostic(
+				ifRange,
+				'Expected expression',
+				vscode.DiagnosticSeverity.Error
+			);
+		}
+
+		return undefined;
+	}
+
+	private getExprIf(text: string) {
+		let expr = text;
+
+		const match = text.match(/\sif\s.*/);
+		if (match) {
+			expr = text.slice(0, match.index! + 1);
+		}
+
+		const condition = this.getIf(match?.[0].trim() ?? '');
+		if (condition instanceof vscode.Diagnostic) {
+			return condition;
+		}
+
+		if (this.getExpression(expr) === undefined && this.getString(expr) === undefined) {
+			return new vscode.Diagnostic(
+				this.lineRange!,
+				`Expected expression`,
+				vscode.DiagnosticSeverity.Error
+			);
+		}
+
+		return [expr, condition] as const;
+	}
+
+	parse(): void {
 		const text = this.doc.getText();
 		this.reset();
 		const scopes = [this.root];
 
-		var lines = text.split(/\r?\n/g);
+		const lines = text.split(/\r?\n/g);
 		if (!lines) {
 			return;
 		}
@@ -64,35 +148,35 @@ export class ParsedFile {
 			scopes.push(s);
 		};
 
-		var entry: ConfigEntry | null = null;
-		var help = false;
-		var helpIndent: string | null = null;
-		for (var lineNumber = 0; lineNumber < lines.length; lineNumber++) {
-			let line = lines[lineNumber];
+		let entry: ConfigEntry | null = null;
+		let help = false;
+		let helpIndent: string | null = null;
+		for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
+			this.line = lines[lineNumber];
 			const startLineNumber = lineNumber;
 
 			/* If lines end with \, the line ending should be ignored: */
-			while (line.endsWith('\\') && lineNumber < lines.length - 1) {
-				line = line.slice(0, line.length - 1) + lines[++lineNumber];
+			while (this.line.endsWith('\\') && lineNumber < lines.length - 1) {
+				this.line = this.line.slice(0, this.line.length - 1) + lines[++lineNumber];
 			}
 
-			if (line.length === 0) {
+			if (this.line.length === 0) {
 				if (help && entry?.help) {
 					entry.help += '\n\n';
 				}
 				continue;
 			}
 
-			var lineRange = new vscode.Range(startLineNumber, 0, lineNumber, line.length);
+			this.lineRange = new vscode.Range(startLineNumber, 0, lineNumber, this.line.length);
 
 			if (help) {
-				var indent = line.replace(/\t/g, ' '.repeat(8)).match(/^\s*/)![0];
+				const indent = this.line.replace(/\t/g, ' '.repeat(8)).match(/^\s*/)![0];
 				if (helpIndent === null) {
 					helpIndent = indent;
 				}
 				if (indent.startsWith(helpIndent)) {
 					if (entry) {
-						entry.help += ' ' + line.trim();
+						entry.help += ' ' + this.line.trim();
 						entry.extend(lineNumber);
 					}
 				} else {
@@ -107,89 +191,8 @@ export class ParsedFile {
 				continue;
 			}
 
-			if (line.match(/^\s*(#|$)/)) {
+			if (this.line.match(/^\s*(#|$)/)) {
 				continue;
-			}
-
-			function getString(text: string) {
-				const match =
-					text.match(/^"(.*?)"\s*(?:$|#.*)/) ?? text.match(/^(\S+)\s*(?:$|#.*)/);
-				return match?.[1];
-			}
-
-			function getSymbol(text: string) {
-				return text.match(/^((?:\w+|\$\([\w-]+\))+)\s*(?:$|#.*)/)?.[1];
-			}
-
-			function getNumber(text: string) {
-				return text.match(/^[+-]?(0x[a-f\d]+|\d+)\b/)?.[0];
-			}
-
-			function getExpression(text: string) {
-				if (text.startsWith('"')) {
-					return getString(text);
-				}
-
-				return (
-					getNumber(text) ??
-					text.match(
-						/^((?:(\|\||&&|!?\s*\(|[)<>]|[!<>]?\=|"[^"]*"|'[^']*'|!?\s*\w+\b|!?\$\(.*\))\s*)+)\s*(?:$|#.*)/
-					)?.[1]
-				);
-			}
-
-			function getIf(text: string): string | undefined | vscode.Diagnostic {
-				const ifMatch = text.match(/^\bif\s+(.*)/);
-				const ifRange = lineRange.with({
-					start: new vscode.Position(lineNumber, line.indexOf('if') + 'if'.length),
-				});
-
-				if (ifMatch) {
-					const expr = getExpression(ifMatch[1]);
-					if (!expr) {
-						return new vscode.Diagnostic(
-							ifRange,
-							'Invalid expression',
-							vscode.DiagnosticSeverity.Error
-						);
-					}
-
-					return expr;
-				}
-
-				if (text.startsWith('if')) {
-					return new vscode.Diagnostic(
-						ifRange,
-						'Expected expression',
-						vscode.DiagnosticSeverity.Error
-					);
-				}
-
-				return undefined;
-			}
-
-			function getExprIf(text: string) {
-				let expr = text;
-
-				match = rest.match(/\sif\s.*/);
-				if (match) {
-					expr = rest.slice(0, match.index! + 1);
-				}
-
-				const condition = getIf(match?.[0].trim() ?? '');
-				if (condition instanceof vscode.Diagnostic) {
-					return condition;
-				}
-
-				if (getExpression(expr) === undefined && getString(expr) === undefined) {
-					return new vscode.Diagnostic(
-						lineRange,
-						`Expected expression`,
-						vscode.DiagnosticSeverity.Error
-					);
-				}
-
-				return [expr, condition] as const;
 			}
 
 			/**
@@ -198,7 +201,7 @@ export class ParsedFile {
 			 * that as a basis for parsing, to reduce the amount of regex comparisons executed
 			 * on each line:
 			 */
-			const lineMatch = line.match(/^\s*(\w+)(?:\s+(.*)|$)/);
+			const lineMatch = this.line.match(/^\s*(\w+)(?:\s+(.*)|$)/);
 			if (!lineMatch) {
 				continue;
 			}
@@ -212,7 +215,7 @@ export class ParsedFile {
 				 * Root level statements:
 				 */
 				case 'comment':
-					match = getString(rest);
+					match = this.getString(rest);
 					if (match) {
 						getScope().children.push(new Comment(match, this, lineNumber));
 					}
@@ -220,7 +223,7 @@ export class ParsedFile {
 
 				case 'config':
 				case 'menuconfig':
-					match = getSymbol(rest);
+					match = this.getSymbol(rest);
 					if (match) {
 						entry = new ConfigEntry(match, startLineNumber, this);
 						this.entries.push(entry);
@@ -228,7 +231,7 @@ export class ParsedFile {
 					} else {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Expected name',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -238,7 +241,7 @@ export class ParsedFile {
 					break;
 
 				case 'choice': {
-					match = getSymbol(rest);
+					match = this.getSymbol(rest);
 					const path = vscode.workspace.asRelativePath(this.uri);
 					entry = new ChoiceEntry(
 						match ?? `<choice at ${path}:${lineNumber + 1}>`,
@@ -252,11 +255,11 @@ export class ParsedFile {
 				case 'osource':
 				case 'orsource':
 				case 'rsource': {
-					const path = getString(rest);
+					const path = this.getString(rest);
 					if (!path) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Expected path string',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -266,9 +269,9 @@ export class ParsedFile {
 					this.inclusions.push({
 						range: new vscode.Range(
 							lineNumber,
-							line.indexOf('"'),
+							this.line.indexOf('"'),
 							lineNumber,
-							line.lastIndexOf('"') + 1
+							this.line.lastIndexOf('"') + 1
 						),
 						path,
 						relative: ['rsource', 'orsource'].includes(firstWord),
@@ -278,13 +281,13 @@ export class ParsedFile {
 
 				case 'if':
 					entry = null;
-					match = getExpression(rest);
+					match = this.getExpression(rest);
 					if (match) {
 						setScope(new IfScope(match, lineNumber, this));
 					} else if (rest.match(/^\s*(#.*)?$/)) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Expected expression',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -292,7 +295,7 @@ export class ParsedFile {
 					} else {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Invalid expression',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -302,11 +305,11 @@ export class ParsedFile {
 
 				case 'mainmenu':
 					entry = null;
-					match = getString(rest);
+					match = this.getString(rest);
 					if (!match) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Expected prompt',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -316,13 +319,13 @@ export class ParsedFile {
 
 				case 'menu':
 					entry = null;
-					match = getString(rest);
+					match = this.getString(rest);
 					if (match) {
 						setScope(new MenuScope(match, lineNumber, this));
 					} else {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Expected prompt',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -342,7 +345,7 @@ export class ParsedFile {
 					if (!entry) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Unexpected type outside config entry',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -351,7 +354,7 @@ export class ParsedFile {
 					}
 
 					entry.type = firstWord;
-					match = getString(rest);
+					match = this.getString(rest);
 					if (match) {
 						entry.prompt = match;
 					}
@@ -363,7 +366,7 @@ export class ParsedFile {
 					if (!entry) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Unexpected prompt outside config entry',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -372,7 +375,7 @@ export class ParsedFile {
 					}
 					match = rest.match(/^"(.*)"\s*(.*)/);
 					if (match) {
-						const condition = getIf(match[2]);
+						const condition = this.getIf(match[2]);
 						if (condition instanceof vscode.Diagnostic) {
 							this.diags.push(condition);
 							break;
@@ -382,7 +385,7 @@ export class ParsedFile {
 					} else {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Expected prompt',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -396,7 +399,7 @@ export class ParsedFile {
 					if (!entry) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								`Unexpected ${firstWord} outside config entry`,
 								vscode.DiagnosticSeverity.Error
 							)
@@ -408,7 +411,7 @@ export class ParsedFile {
 					if (!match) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								`Expected symbol`,
 								vscode.DiagnosticSeverity.Error
 							)
@@ -416,13 +419,13 @@ export class ParsedFile {
 						break;
 					}
 
-					const condition = getIf(match[2] ?? '');
+					const condition = this.getIf(match[2] ?? '');
 					if (condition instanceof vscode.Diagnostic) {
 						this.diags.push(condition);
 						break;
 					}
 
-					if (firstWord == 'imply') {
+					if (firstWord === 'imply') {
 						entry.implys.push({ name: match[1], condition });
 					} else {
 						entry.selects.push({ name: match[1], condition });
@@ -435,7 +438,7 @@ export class ParsedFile {
 					if (!entry) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								`Unexpected ${firstWord} outside config entry`,
 								vscode.DiagnosticSeverity.Error
 							)
@@ -443,13 +446,13 @@ export class ParsedFile {
 						break;
 					}
 
-					match = rest.match(/^env\=(.*)/);
+					match = rest.match(/^env=(.*)/);
 					if (match) {
-						const str = getString(match[1]);
+						const str = this.getString(match[1]);
 						if (!str) {
 							this.diags.push(
 								new vscode.Diagnostic(
-									lineRange,
+									this.lineRange,
 									`Expected value after option env`,
 									vscode.DiagnosticSeverity.Error
 								)
@@ -468,7 +471,7 @@ export class ParsedFile {
 						if (entry.name !== 'MODULES') {
 							this.diags.push(
 								new vscode.Diagnostic(
-									lineRange,
+									this.lineRange,
 									`Modules option is only permitted on the MODULES entry.`,
 									vscode.DiagnosticSeverity.Error
 								)
@@ -481,7 +484,7 @@ export class ParsedFile {
 					if (match) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								`Unexpected option "${match[0]}"`,
 								vscode.DiagnosticSeverity.Error
 							)
@@ -489,7 +492,7 @@ export class ParsedFile {
 					} else {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								`Expected option.`,
 								vscode.DiagnosticSeverity.Error
 							)
@@ -507,7 +510,7 @@ export class ParsedFile {
 					if (!entry) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								`Unexpected ${firstWord} outside config entry`,
 								vscode.DiagnosticSeverity.Error
 							)
@@ -515,7 +518,7 @@ export class ParsedFile {
 						break;
 					}
 
-					const expr = getExprIf(rest);
+					const expr = this.getExprIf(rest);
 					if (expr instanceof vscode.Diagnostic) {
 						this.diags.push(expr);
 						break;
@@ -535,7 +538,7 @@ export class ParsedFile {
 					if (!entry) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								`Unexpected ${firstWord} outside config entry`,
 								vscode.DiagnosticSeverity.Error
 							)
@@ -554,7 +557,7 @@ export class ParsedFile {
 					if (!match) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Expected range',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -565,7 +568,7 @@ export class ParsedFile {
 					if (!entry) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								`Unexpected ${firstWord} outside config entry`,
 								vscode.DiagnosticSeverity.Error
 							)
@@ -573,7 +576,7 @@ export class ParsedFile {
 						break;
 					}
 
-					const condition = getIf(match[3] ?? '');
+					const condition = this.getIf(match[3] ?? '');
 					if (condition instanceof vscode.Diagnostic) {
 						this.diags.push(condition);
 						break;
@@ -595,7 +598,7 @@ export class ParsedFile {
 						) {
 							this.diags.push(
 								new vscode.Diagnostic(
-									lineRange,
+									this.lineRange,
 									'Unexpected "depends on" outside config entry',
 									vscode.DiagnosticSeverity.Error
 								)
@@ -603,7 +606,7 @@ export class ParsedFile {
 							break;
 						}
 
-						const expr = getExprIf(match[1]);
+						const expr = this.getExprIf(match[1]);
 						if (expr instanceof vscode.Diagnostic) {
 							this.diags.push(expr);
 							break;
@@ -616,7 +619,7 @@ export class ParsedFile {
 					} else {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Expected expression',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -629,11 +632,11 @@ export class ParsedFile {
 				 */
 
 				case 'visible': {
-					const condition = getIf(rest);
+					const condition = this.getIf(rest);
 					if (!condition) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'Expected if-expression',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -648,7 +651,7 @@ export class ParsedFile {
 					if (!(scope instanceof MenuScope)) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'"visible if" is only valid in menu scopes',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -665,7 +668,7 @@ export class ParsedFile {
 					if (!(scope instanceof ChoiceScope)) {
 						this.diags.push(
 							new vscode.Diagnostic(
-								lineRange,
+								this.lineRange,
 								'"optional" is only valid in choice entries',
 								vscode.DiagnosticSeverity.Error
 							)
@@ -692,7 +695,7 @@ export class ParsedFile {
 					};
 					if (!(scope instanceof expectedScopes[firstWord])) {
 						const diag = new vscode.Diagnostic(
-							lineRange,
+							this.lineRange,
 							`Unexpected ${firstWord}`,
 							vscode.DiagnosticSeverity.Error
 						);
@@ -714,14 +717,14 @@ export class ParsedFile {
 
 				default:
 					// macro
-					match = line.match(/^\s*[\w-]+\s*:?\=.*/);
+					match = this.line.match(/^\s*[\w-]+\s*:?=.*/);
 					if (match) {
 						break;
 					}
 
 					this.diags.push(
 						new vscode.Diagnostic(
-							lineRange,
+							this.lineRange,
 							`Invalid token`,
 							vscode.DiagnosticSeverity.Error
 						)
@@ -730,7 +733,7 @@ export class ParsedFile {
 		}
 
 		if (scopes.length > 1) {
-			scopes.forEach(scope => scope.lines.end = lines.length);
+			scopes.forEach((scope) => (scope.lines.end = lines.length));
 
 			const s = scopes.pop()!;
 			this.diags.push(

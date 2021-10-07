@@ -60,14 +60,14 @@ export class KconfigLangHandler
 			new vscode.CompletionItem('default', vscode.CompletionItemKind.Property),
 		];
 
-		var range = new vscode.CompletionItem('range', vscode.CompletionItemKind.Keyword);
+		const range = new vscode.CompletionItem('range', vscode.CompletionItemKind.Keyword);
 		range.insertText = new vscode.SnippetString('range ');
 		range.insertText.appendPlaceholder('min');
 		range.insertText.appendText(' ');
 		range.insertText.appendPlaceholder('max');
 		this.propertyCompletions.push(range);
 
-		var help = new vscode.CompletionItem('help', vscode.CompletionItemKind.Keyword);
+		const help = new vscode.CompletionItem('help', vscode.CompletionItemKind.Keyword);
 		help.insertText = new vscode.SnippetString('help\n  ');
 		help.insertText.appendTabstop();
 		help.commitCharacters = [' ', '\t', '\n'];
@@ -120,7 +120,7 @@ export class KconfigLangHandler
 		}
 	}
 
-	registerHandlers(context: vscode.ExtensionContext) {
+	registerHandlers(context: vscode.ExtensionContext): void {
 		context.subscriptions.push(
 			vscode.workspace.onDidOpenTextDocument((d) => {
 				this.setFileType(d);
@@ -138,9 +138,7 @@ export class KconfigLangHandler
 			})
 		);
 
-		const kconfig = [
-			{ language: 'kconfig', scheme: 'file' }
-		];
+		const kconfig = [{ language: 'kconfig', scheme: 'file' }];
 
 		context.subscriptions.push(
 			vscode.languages.registerCompletionItemProvider(kconfig, this),
@@ -149,7 +147,7 @@ export class KconfigLangHandler
 		);
 	}
 
-	activate(context: vscode.ExtensionContext) {
+	activate(context: vscode.ExtensionContext): void {
 		vscode.workspace.textDocuments.forEach((d) => {
 			this.setFileType(d);
 		});
@@ -163,13 +161,13 @@ export class KconfigLangHandler
 		}
 	}
 
-	deactivate() {
+	deactivate(): void {
 		this.diags.clear();
 	}
 
-	getSymbolName(document: vscode.TextDocument, position: vscode.Position) {
-		var range = document.getWordRangeAtPosition(position);
-		var word = document.getText(range);
+	getSymbolName(document: vscode.TextDocument, position: vscode.Position): string {
+		const range = document.getWordRangeAtPosition(position);
+		const word = document.getText(range);
 		switch (document.languageId) {
 			case 'kconfig':
 				return word;
@@ -185,7 +183,7 @@ export class KconfigLangHandler
 		document: vscode.TextDocument,
 		position: vscode.Position
 	): vscode.CompletionItem[] | undefined {
-		var line = document.lineAt(position.line);
+		const line = document.lineAt(position.line);
 
 		if (
 			!line.text.match(
@@ -200,10 +198,7 @@ export class KconfigLangHandler
 		}
 	}
 
-	provideDocumentLinks(
-		document: vscode.TextDocument,
-		token: vscode.CancellationToken
-	): vscode.DocumentLink[] {
+	provideDocumentLinks(document: vscode.TextDocument): vscode.DocumentLink[] {
 		const doc = this.getFile(document);
 		if (!doc.parsed) {
 			doc.parse();
@@ -228,8 +223,7 @@ export class KconfigLangHandler
 	}
 
 	provideDocumentSymbols(
-		document: vscode.TextDocument,
-		token: vscode.CancellationToken
+		document: vscode.TextDocument
 	): vscode.ProviderResult<vscode.DocumentSymbol[]> {
 		const doc = this.getFile(document);
 		if (!doc.parsed) {

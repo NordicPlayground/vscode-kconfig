@@ -14,7 +14,7 @@ import {
 } from 'vscode-languageclient/node';
 import { existsSync, readFile } from 'fs';
 
-var client: LanguageClient;
+let client: LanguageClient;
 
 function startServer(ctx: vscode.ExtensionContext) {
 	const pythonConfig = vscode.workspace.getConfiguration('python');
@@ -62,11 +62,13 @@ async function addKconfigContexts() {
 
 	await client.onReady();
 
-	await Promise.all(caches.map((cache) =>
-		addBuild(vscode.Uri.parse(path.dirname(cache.fsPath))).catch((err) => {
-			/* Ignore */
-		})
-	));
+	await Promise.all(
+		caches.map((cache) =>
+			addBuild(vscode.Uri.parse(path.dirname(cache.fsPath))).catch(() => {
+				/* Ignore */
+			})
+		)
+	);
 
 	const cacheWatcher = vscode.workspace.createFileSystemWatcher('**/CMakeCache.txt');
 
@@ -75,7 +77,7 @@ async function addKconfigContexts() {
 	cacheWatcher.onDidDelete(removeBuild);
 }
 
-export function activate(ctx: vscode.ExtensionContext) {
+export function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	vscode.commands.registerCommand('kconfig.add', () => {
 		vscode.window
 			.showOpenDialog({
@@ -91,10 +93,10 @@ export function activate(ctx: vscode.ExtensionContext) {
 	});
 
 	startServer(ctx);
-    return addKconfigContexts();
+	return addKconfigContexts();
 }
 
-export function setMainBuild(uri?: vscode.Uri) {
+export function setMainBuild(uri?: vscode.Uri): void {
 	client.sendNotification('kconfig/setMainBuild', { uri: uri?.toString() ?? '' });
 }
 
@@ -117,7 +119,7 @@ function parseCmakeCache(uri: vscode.Uri): Promise<CMakeCache> {
 				const lines = data.split(/\r?\n/g);
 				const entries: CMakeCache = {};
 				lines.forEach((line) => {
-					const match = line.match(/^(\w+)(?::\w+)?\=(.*)/);
+					const match = line.match(/^(\w+)(?::\w+)?=(.*)/);
 					if (match) {
 						entries[match[1]] = match[2].trim().split(';');
 					}
@@ -162,7 +164,7 @@ interface BuildResponse {
 	id: string;
 }
 
-export async function addBuild(uri: vscode.Uri) {
+export async function addBuild(uri: vscode.Uri): Promise<BuildResponse> {
 	const cache = await parseCmakeCache(vscode.Uri.joinPath(uri, 'CMakeCache.txt'));
 	const modules = await parseZephyrModules(vscode.Uri.joinPath(uri, 'zephyr_modules.txt'));
 
@@ -224,7 +226,7 @@ export async function addBuild(uri: vscode.Uri) {
 	} as AddBuildParams);
 }
 
-export async function removeBuild(uri: vscode.Uri) {
+export async function removeBuild(uri: vscode.Uri): Promise<void> {
 	client.sendNotification('kconfig/removeBuild', { uri: uri.toString() });
 }
 
@@ -283,6 +285,7 @@ export async function getMenu(
 	node?: string,
 	options: MenuOptions = {}
 ): Promise<Menu | undefined> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const rsp = await client.sendRequest<any>('kconfig/getMenu', {
 		ctx: uri?.toString(),
 		id: node,
@@ -294,6 +297,7 @@ export async function getMenu(
 
 	return <Menu>{
 		...(rsp as Menu),
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		items: rsp.items.map((item: any) => {
 			return {
 				...(item as GenericNode),
@@ -312,6 +316,6 @@ export async function getMenu(
 	};
 }
 
-export function stop() {
+export function stop(): void {
 	client?.stop();
 }
