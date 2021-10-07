@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import * as zephyr from './zephyr';
+import * as kEnv from './env';
 import { startExtension } from './extension';
 import * as lsp from './lsp';
 
@@ -13,7 +14,7 @@ class Api {
 
 	async activate(zephyrBase: vscode.Uri, _: string, env?: typeof process.env): Promise<boolean> {
 		zephyr.setZephyrBase(zephyrBase);
-		lsp.setWestEnv(env);
+		kEnv.set(env);
 		startExtension();
 		return true;
 	}

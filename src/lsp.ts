@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as kEnv from './env';
 import {
 	LanguageClient,
 	LanguageClientOptions,
@@ -14,13 +15,6 @@ import {
 import { existsSync, readFile } from 'fs';
 
 var client: LanguageClient;
-var westEnv = process.env;
-
-export function setWestEnv(env?: typeof process.env) {
-	if (env) {
-		westEnv = env;
-	}
-}
 
 function startServer(ctx: vscode.ExtensionContext) {
 	const pythonConfig = vscode.workspace.getConfiguration('python');
@@ -31,7 +25,7 @@ function startServer(ctx: vscode.ExtensionContext) {
 		args: [path.resolve(ctx.extensionPath, 'srv', 'kconfiglsp.py')],
 		options: {
 			cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
-			env: westEnv,
+			env: kEnv.get(),
 		},
 		transport: TransportKind.pipe,
 	};
@@ -190,7 +184,7 @@ export async function addBuild(uri: vscode.Uri) {
 	}
 
 	const env: typeof process.env = {
-		...westEnv,
+		...kEnv.get(),
 		ZEPHYR_BASE: cache['ZEPHYR_BASE']?.[0],
 		ZEPHYR_TOOLCHAIN_VARIANT: cache['ZEPHYR_TOOLCHAIN_VARIANT']?.[0],
 		PYTHON_EXECUTABLE: cache['PYTHON_PREFER_EXECUTABLE']?.[0],
