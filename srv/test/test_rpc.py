@@ -2,8 +2,10 @@ import json
 import sys
 from rpc import RPCError, RPCServer, handler
 
+
 class StreamEnd(Exception):
     pass
+
 
 class MockStream:
     def __init__(self):
@@ -27,7 +29,7 @@ class MockStream:
             idx = self.input.index('\n')
         except ValueError as e:
             raise StreamEnd()
-        val = self.read(idx+1)
+        val = self.read(idx + 1)
         sys.stdout.write(f'Reading line as {idx} bytes: "{val}"\n')
         return val
 
@@ -71,7 +73,7 @@ class Server(RPCServer):
     @handler('manualResponse')
     def handle_manual_response(self, params):
         self.rsp(params)
-        return {'invalid': 'invalid'} # should be ignored
+        return {'invalid': 'invalid'}  # should be ignored
 
 
 class Packet:
@@ -88,7 +90,9 @@ class Packet:
         return Packet({'Content-Length': len(content)}, content)
 
     def __str__(self):
-        return ''.join([f'{h}: {self.headers[h]}\r\n' for h in self.headers.keys()]) + '\r\n' + self.content
+        return ''.join([f'{h}: {self.headers[h]}\r\n'
+                        for h in self.headers.keys()]) + '\r\n' + self.content
+
 
 def pull_packet(io: MockStream):
     packet = Packet()
@@ -103,17 +107,16 @@ def pull_packet(io: MockStream):
     packet.content = io.pull(length)
     return packet
 
+
 def push_packet(io: MockStream, obj):
     io.push(str(Packet.create(obj)))
+
 
 def test_recv():
     srv = Server()
 
     # Push a raw packet to ensure that the push_packet format isn't broken:
-    srv.io.push(''.join([
-        'Content-Length: 36\r\n\r\n',
-        '{"jsonrpc": "2.0", "method": "test"}'
-    ]))
+    srv.io.push(''.join(['Content-Length: 36\r\n\r\n', '{"jsonrpc": "2.0", "method": "test"}']))
 
     push_packet(srv.io, {'jsonrpc': '2.0', 'method': 'test'})
 
@@ -126,44 +129,38 @@ def test_recv():
         return
     assert False
 
+
 def test_invalid_len():
     srv = Server()
 
     # too short:
-    srv.io.push(''.join([
-        'Content-Length: 34\r\n\r\n',
-        '{"jsonrpc": "2.0", "method": "test"}'
-    ]))
+    srv.io.push(''.join(['Content-Length: 34\r\n\r\n', '{"jsonrpc": "2.0", "method": "test"}']))
 
     try:
         srv.loop()
     except json.decoder.JSONDecodeError:
         assert len(srv.received) == 0
-        return # expected, as the value isn't long enough
+        return  # expected, as the value isn't long enough
     except:
         assert False
 
-    srv.io.push(''.join([
-        'Content-Length: 39\r\n\r\n',
-        '{"jsonrpc": "2.0", "method": "test"}'
-    ]))
+    srv.io.push(''.join(['Content-Length: 39\r\n\r\n', '{"jsonrpc": "2.0", "method": "test"}']))
 
     try:
         srv.loop()
     except StreamEnd:
         assert len(srv.received) == 0
-        return # expected, as the value is too long
+        return  # expected, as the value is too long
     except:
         assert False
+
 
 def test_unknown_headers():
     srv = Server()
 
     srv.io.push(''.join([
-        'Some random header: "some random value that is ignored"\r\n',
-        'Another random header\r\n',
-        '\r\r\r\r\r\rignoring CR\r\n',
-        'Content-Length: 36\r\n\r\n',
+        'Some random header: "some random value that is ignored"\r\n', 'Another random header\r\n',
+        '\r\r\r\r\r\rignoring CR\r\n', 'Content-Length: 36\r\n\r\n',
         '{"jsonrpc": "2.0", "method": "test"}'
     ]))
 
@@ -174,6 +171,7 @@ def test_unknown_headers():
         return
     assert False
 
+
 def test_notify():
     srv = Server()
     srv.notify('someMethod', {'param': [1, 2, 3]})
@@ -181,13 +179,20 @@ def test_notify():
     assert len(notification.headers.keys()) == 2
     assert notification.headers['Content-Length']
     assert len(notification.content) == int(notification.headers['Content-Length'])
-    assert notification.as_object() == {"jsonrpc": "2.0",
-                                     "method": "someMethod", "params": {"param": [1, 2, 3]}}
+    assert notification.as_object() == {
+        "jsonrpc": "2.0",
+        "method": "someMethod",
+        "params": {
+            "param": [1, 2, 3]
+        }
+    }
+
 
 def test_req():
     srv = Server()
 
     rsp = None
+
     def handle_rsp(r):
         nonlocal rsp
         assert rsp == None
@@ -199,8 +204,14 @@ def test_req():
     assert len(req.headers.keys()) == 2
     assert req.headers['Content-Length']
     assert len(req.content) == int(req.headers['Content-Length'])
-    assert req.as_object() == {"jsonrpc": "2.0", "id": 0,
-                               "method": "someMethod", "params": {"param": [1, 2, 3]}}
+    assert req.as_object() == {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "method": "someMethod",
+        "params": {
+            "param": [1, 2, 3]
+        }
+    }
 
     rsp_params = {'param': [1, 2, 3]}
     push_packet(srv.io, {'jsonrpc': '2.0', 'id': 0, 'result': rsp_params})
@@ -217,6 +228,7 @@ def test_req():
     assert rsp.result == rsp_params
     assert rsp.error == None
 
+
 def test_req_handler():
     srv = Server()
     req_params = {'test': True}
@@ -232,10 +244,15 @@ def test_req_handler():
     # got a response:
     rsp = pull_packet(srv.io).as_object()
     assert rsp['id'] == 5
-    assert rsp['result'] == req_params # handler is just returning our params
+    assert rsp['result'] == req_params  # handler is just returning our params
 
     # Send another request:
-    push_packet(srv.io, {'jsonrpc': '2.0', 'id': 6, 'method': 'manualResponse', 'params': req_params})
+    push_packet(srv.io, {
+        'jsonrpc': '2.0',
+        'id': 6,
+        'method': 'manualResponse',
+        'params': req_params
+    })
 
     try:
         srv.loop()
@@ -245,7 +262,7 @@ def test_req_handler():
     # got a response:
     rsp = pull_packet(srv.io).as_object()
     assert rsp['id'] == 6
-    assert rsp['result'] == req_params # handler is just returning our params
+    assert rsp['result'] == req_params  # handler is just returning our params
 
     # Send a request that results in an error:
     push_packet(srv.io, {'jsonrpc': '2.0', 'id': 7, 'method': 'errorReq', 'params': req_params})
@@ -262,6 +279,7 @@ def test_req_handler():
     assert rsp['error']['message'] == 'error'
     assert rsp['result'] == None
 
+
 def test_notification_handler():
     srv = Server()
     req_params = {'test': True}
@@ -276,7 +294,7 @@ def test_notification_handler():
     try:
         srv.loop()
     except StreamEnd:
-        pass # Not expecting any exceptions to break the loop
+        pass  # Not expecting any exceptions to break the loop
 
     # Expect no response, as we were sending notifications:
     assert srv.io.pull() == ''
