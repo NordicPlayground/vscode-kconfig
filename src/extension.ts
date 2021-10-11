@@ -13,24 +13,24 @@ export let langHandler: KconfigLangHandler | undefined;
 let context: vscode.ExtensionContext;
 
 export async function startExtension(): Promise<void> {
-	await zephyr.activate();
+    await zephyr.activate();
 
-	langHandler = new KconfigLangHandler();
-	langHandler.activate(context);
+    langHandler = new KconfigLangHandler();
+    langHandler.activate(context);
 
-	await lsp.activate(context);
+    await lsp.activate(context);
 }
 
 export function activate(ctx: vscode.ExtensionContext): Api {
-	context = ctx;
-	if (!vscode.extensions.getExtension('nordic-semiconductor.nrf-connect')) {
-		startExtension();
-	}
+    context = ctx;
+    if (!vscode.extensions.getExtension('nordic-semiconductor.nrf-connect')) {
+        startExtension();
+    }
 
-	return new Api();
+    return new Api();
 }
 
 export function deactivate(): void {
-	langHandler?.deactivate();
-	lsp.stop();
+    langHandler?.deactivate();
+    lsp.stop();
 }
