@@ -15,6 +15,7 @@ import {
 import { existsSync, readFile } from 'fs';
 
 let client: LanguageClient;
+const knownContexts: vscode.Uri[] = [];
 
 function startServer(ctx: vscode.ExtensionContext) {
     const pythonConfig = vscode.workspace.getConfiguration('python');
@@ -96,7 +97,11 @@ export function activate(ctx: vscode.ExtensionContext): Promise<void> {
     return addKconfigContexts();
 }
 
-export function setMainBuild(uri?: vscode.Uri): void {
+export async function setMainBuild(uri?: vscode.Uri): Promise<void> {
+    if (uri) {
+        await addBuild(uri);
+    }
+
     client.sendNotification('kconfig/setMainBuild', { uri: uri?.toString() ?? '' });
 }
 
@@ -164,7 +169,11 @@ interface BuildResponse {
     id: string;
 }
 
-export async function addBuild(uri: vscode.Uri): Promise<BuildResponse> {
+export async function addBuild(uri: vscode.Uri): Promise<BuildResponse | undefined> {
+    if (knownContexts.find((u) => u.fsPath === uri.fsPath)) {
+        return;
+    }
+
     const cache = await parseCmakeCache(vscode.Uri.joinPath(uri, 'CMakeCache.txt'));
     const modules = await parseZephyrModules(vscode.Uri.joinPath(uri, 'zephyr_modules.txt'));
 
@@ -217,6 +226,8 @@ export async function addBuild(uri: vscode.Uri): Promise<BuildResponse> {
         DTS_POST_CPP: vscode.Uri.joinPath(uri, 'zephyr', `${board}.dts.pre.tmp`).fsPath,
         DTS_ROOT_BINDINGS: cache['CACHED_DTS_ROOT_BINDINGS'].join('?'),
     });
+
+    knownContexts.push(uri);
 
     return client.sendRequest<BuildResponse>('kconfig/addBuild', {
         uri: uri.toString(),
