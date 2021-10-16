@@ -5,6 +5,7 @@
 import inspect
 from typing import Any, Callable, Union, Optional
 import sys
+import os
 import json
 import enum
 from datetime import datetime
@@ -15,7 +16,13 @@ This file implements a JSON remote procedure call server, for JSON-RPC version 2
 """
 
 JSONRPC = '2.0'
-
+if os.linesep == '\n':
+    LINE_ENDING = '\r\n'
+else:
+    # On Windows, Python will replace any \n characters in stdout with \r\n.
+    # Since this can't be easily changed, it's easier to just let it do its thing.
+    # See https://stackoverflow.com/questions/49709309/prevent-python-prints-automatic-newline-conversion-to-crlf-on-windows
+    LINE_ENDING = '\n'
 
 def encode_json(o):
     def encoder(obj):
@@ -340,8 +347,12 @@ class RPCServer:
         raw = encode_json(msg)
         self.dbg('send: ' + raw)
         self._send_stream.write(
-            'Content-Type: "application/vscode-jsonrpc; charset=utf-8"\r\nContent-Length: {}\r\n\r\n{}'
-            .format(len(raw), raw))
+            LINE_ENDING.join([
+                'Content-Type: "application/vscode-jsonrpc; charset=utf-8"',
+                'Content-Length: ' + str(len(raw)),
+                '',
+                raw
+            ]))
         self._send_stream.flush()
 
     def _recv(self) -> Union[RPCNotification, RPCRequest, RPCResponse]:
