@@ -59,6 +59,8 @@ class Kconfig(kconfig.Kconfig):
 
         Overrides the diagnostics mechanism to keep track of them in a dict instead
         of writing them to stdout.
+
+        Overrides the _open function to inject live editor data from the documentStore.
         """
         self.diags: Dict[str, List[Diagnostic]] = {}
         self.warn_assign_undef = True
@@ -82,6 +84,18 @@ class Kconfig(kconfig.Kconfig):
         if self.filename and self.linenr != None:
             return Location(Uri.file(os.path.join(self.srctree, self.filename)),
                             Range(Position(self.linenr - 1, 0), Position(self.linenr - 1, 99999)))
+
+    # Overriding _open to work on virtual file storage when required:
+    def _open(self, filename, mode):
+        # Read from document store, but don't create an entry if it doesn't exist:
+        doc = documentStore.get(Uri.file(filename), create=False)
+        if doc:
+            doc.open(mode)
+            return doc
+        if os.path.isdir(filename):
+            raise kconfig.KconfigError(
+                f'Attempting to open directory {filename} as file @{self.filename}:{self.linenr}')
+        return super()._open(filename, mode)
 
     def _warn(self, msg: str, filename=None, linenr=None):
         super()._warn(msg, filename, linenr)
