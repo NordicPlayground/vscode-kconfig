@@ -1207,7 +1207,10 @@ class KconfigServer(LSPServer):
 
         def doc_sym(e: ConfEntry):
             sym = ctx.get(e.name)
-            prompt = _prompt(sym, True)
+            if sym:
+                prompt = _prompt(sym, True)
+            else:
+                prompt = None
             return DocumentSymbol('CONFIG_' + e.name, SymbolKind.PROPERTY, e.full_range, prompt)
 
         return [doc_sym(e) for e in file.entries()]
