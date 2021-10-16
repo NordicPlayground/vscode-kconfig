@@ -913,6 +913,14 @@ class KconfigServer(LSPServer):
         self.ctx[str(uri)] = ctx
         return ctx
 
+    def sorted_contexts(self):
+        return sorted(self.ctx.values(), key=lambda ctx: ctx.last_access)
+
+    @property
+    def last_ctx(self):
+        """Get most recent context"""
+        return [None, *self.sorted_contexts()].pop()
+
     def best_ctx(self, uri: Uri):
         """
         Get the context that is the most likely owner of the given URI.
@@ -930,13 +938,13 @@ class KconfigServer(LSPServer):
                 return ctx
 
         # Candidate contexts are all contexts that has the file:
-        if is_conf_file:
-            candidates = filter(lambda ctx: ctx.has_file(uri), self.ctx.values())
-        else:
-            candidates = self.ctx.values()
+        def has_uri(ctx):
+            if is_conf_file:
+                return ctx.has_file(uri)
+            return True
 
         # Get most recent candidate:
-        ctx = [None, *sorted(candidates, key=lambda ctx: ctx.last_access)].pop()
+        ctx = [None, *[c for c in self.sorted_contexts() if has_uri(c)]].pop()
 
         if ctx:
             self.access_count += 1
@@ -976,7 +984,6 @@ class KconfigServer(LSPServer):
 
             # This is the active build. Parse it right away:
             if uri == self.main_uri:
-                self.last_ctx = ctx
                 self.refresh_ctx(ctx)
             return {'id': ctx.uri}
 
@@ -995,7 +1002,6 @@ class KconfigServer(LSPServer):
         if ctx:
             self.dbg(f'Main build: {uri}')
             self.dbg('\t' + "\n\t".join([str(f) for f in ctx.conf_files]))
-            self.last_ctx = ctx
             self.refresh_ctx(ctx)
 
     @handler('kconfig/search')
