@@ -626,7 +626,9 @@ class KconfigContext:
             filter = filter[len('CONFIG_'):]
         return [
             sym for sym in self._kconfig.syms.values()
-            if not filter or _filter_match(filter, sym.name)
+            # Literal values are also symbols, but can be filtered out by checking sym.nodes
+            # which only exists if this is a proper config symbol:
+            if hasattr(sym, 'nodes') and len(sym.nodes) and (not filter or _filter_match(filter, sym.name))
         ]
 
     def symbol_search(self, query):
