@@ -50,14 +50,24 @@ class Uri:
         fragment: str
             Fragment of the URI, i.e. the part after #
         """
-        self.scheme = scheme
-        self.authority = authority
-        self.path = path
-        self.query = query
-        self.fragment = fragment
+        self.scheme = scheme or ''
+        self.authority = authority or ''
+        self.path = path or ''
+        self.query = query or ''
+        self.fragment = fragment or ''
+
+    def escape(self, text):
+        def escape_char(c):
+            if c in "!#$&'()*+,\\:;=?@[]":
+                return '%{:02X}'.format(ord(c))
+            return c
+        return ''.join([escape_char(c) for c in text])
 
     def __repr__(self):
-        uri = '{}://{}{}'.format(self.scheme, self.authority, self.path)
+        path = self.path
+        if not path.startswith('/'):
+            path = '/' + path
+        uri = '{}://{}{}'.format(*[self.escape(part) for part in [self.scheme, self.authority, path]])
         if self.query:
             uri += '?' + self.query
         if self.fragment:
@@ -91,14 +101,20 @@ class Uri:
         if not isinstance(raw, str):
             return NotImplemented
 
-        match = re.match(r'(.*?):(?://([^?\s/#]*))?(/[^?\s]*)?(?:\?([^#]+))?(?:#(.+))?', raw)
+        sanitized = sanitize(raw)
+
+        # Convert windows paths:
+        if re.match(r'\w:\\', sanitized):
+            sanitized = 'file:///' + sanitized.replace('\\', '/')
+
+        match = re.match(r'(.*?):(?://([^?\s/#]*))?(/[^?\s]*)?(?:\?([^#]+))?(?:#(.+))?', sanitized)
         if match:
-            return Uri(*[sanitize(p) for p in match.groups()])
+            return Uri(*list(match.groups()))
 
     @staticmethod
     def file(path: str):
         """Convert a file path to a URI"""
-        return Uri('file', '', path)
+        return Uri('file', '', path.replace('\\', '/'))
 
     def to_dict(self):
         return str(self)

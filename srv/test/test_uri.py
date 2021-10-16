@@ -27,6 +27,36 @@ def test_parse_http():
     assert uri.fragment == 'fragment'
 
 
+def test_parse_windows_path_escaped():
+    uri = lsp.Uri.parse('c:%5CUsers%5CUser%5Cfolder%5Cfilename')
+    assert uri.scheme == 'file'
+    assert uri.authority == ''
+    assert uri.path == '/c:/Users/User/folder/filename'
+    assert uri.basename == 'filename'
+    assert uri.query == ''
+    assert uri.fragment == ''
+
+
+def test_parse_windows_path():
+    uri = lsp.Uri.parse('c:\\Users\\User\\folder\\filename')
+    assert uri.scheme == 'file'
+    assert uri.authority == ''
+    assert uri.path == '/c:/Users/User/folder/filename'
+    assert uri.basename == 'filename'
+    assert uri.query == ''
+    assert uri.fragment == ''
+
+
+def test_parse_windows_file():
+    uri = lsp.Uri.parse('file:///c%3A/Users/User/folder/filename')
+    assert uri.scheme == 'file'
+    assert uri.authority == ''
+    assert uri.path == '/c:/Users/User/folder/filename'
+    assert uri.basename == 'filename'
+    assert uri.query == ''
+    assert uri.fragment == ''
+
+
 def test_parse_git():
     """The built-in git extension uses a non-standard format with an encoded query"""
     uri = lsp.Uri.parse(
@@ -48,3 +78,15 @@ def test_file():
     assert uri.basename == 'file'
     assert uri.query == ''
     assert uri.fragment == ''
+
+
+def test_file_windows():
+    uri = lsp.Uri.file('c:\\Users\\User\\folder\\filename')
+    assert uri.scheme == 'file'
+    assert uri.authority == ''
+    assert uri.path == 'c:/Users/User/folder/filename'
+
+
+def test_encode_windows_path():
+    uri = lsp.Uri.file('c:\\Users\\User\\folder\\filename')
+    assert str(uri) == 'file:///c%3A/Users/User/folder/filename'
