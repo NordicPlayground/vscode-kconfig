@@ -24,6 +24,7 @@ else:
     # See https://stackoverflow.com/questions/49709309/prevent-python-prints-automatic-newline-conversion-to-crlf-on-windows
     LINE_ENDING = '\n'
 
+
 def encode_json(o):
     def encoder(obj):
         if hasattr(obj, 'to_dict'):
@@ -47,7 +48,7 @@ class RPCMsg:
 
 
 class RPCRequest(RPCMsg):
-    def __init__(self, id: Union[str, int], method: str, params: Union[object, list] = None):
+    def __init__(self, id: Union[str, int], method: str, params: Any = None):
         """
         RPC request message.
 
@@ -162,7 +163,7 @@ class RPCNotification(RPCMsg):
         self.params = params
 
 
-def handler(method):
+def handler(method: str):
     """
     RPC message handler attribute.
     Used to wrap handler methods in the RPCServer class:

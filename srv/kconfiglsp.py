@@ -517,7 +517,7 @@ class KconfigContext:
 
     @property
     def valid(self):
-        return self._kconfig and self._kconfig.valid
+        return self._kconfig != None and self._kconfig.valid
 
     def invalidate(self):
         if self._kconfig:
@@ -607,10 +607,11 @@ class KconfigContext:
         if sym:
             sym.unset_value()
 
-    def get(self, name) -> kconfig.Symbol:
+    def get(self, name) -> Optional[kconfig.Symbol]:
         """Get a kconfig symbol based on its name. The name should NOT include the CONFIG_ prefix."""
         if self._kconfig:
             return self._kconfig.syms.get(name)
+        return None
 
     def conf_file(self, uri):
         """Get the config file with the given URI, if any."""
@@ -642,7 +643,8 @@ class KconfigContext:
             sym for sym in self._kconfig.syms.values()
             # Literal values are also symbols, but can be filtered out by checking sym.nodes
             # which only exists if this is a proper config symbol:
-            if hasattr(sym, 'nodes') and len(sym.nodes) and (not filter or _filter_match(filter, sym.name))
+            if hasattr(sym, 'nodes') and len(sym.nodes) and (
+                not filter or _filter_match(filter, sym.name))
         ]
 
     def symbol_search(self, query):
@@ -907,7 +909,7 @@ class KconfigServer(LSPServer):
 
         if ctx.valid:
             self.dbg('Done. {} diags, {} warnings'.format(
-                sum([len(file.diags) for file in ctx.conf_files]), len(ctx._kconfig.warnings)))
+                sum([len(file.diags) for file in ctx.conf_files]), len(ctx._kconfig.warnings if ctx._kconfig else 0)))
 
         for conf in ctx.conf_files:
             self.publish_diags(conf.uri, conf.diags)

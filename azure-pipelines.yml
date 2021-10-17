@@ -12,6 +12,14 @@ steps:
     versionSpec: 14
   displayName: Install Node.js
 
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.6'
+  displayName: Set Python version
+
+- script: python -m pip install -r srv/requirements-dev.txt
+  displayName: Install Python requirements
+
 - script: |
     set -o errexit -o pipefail
     npm ci
@@ -21,6 +29,27 @@ steps:
     set -o errexit -o pipefail
     npm run lint
   displayName: Run linter
+
+- script: |
+    set -o errexit -o pipefail
+    python -m mypy --junit-xml out/test-mypy.xml --config-file srv/.mypy.ini
+  displayName: Run mypy
+
+- script: |
+    set -o errexit -o pipefail
+    pytest srv --junitxml=out/test-pytest.xml --cov=srv --cov-report=xml --cov-config=srv/.coveragerc
+  displayName: Run python tests
+
+- task: PublishTestResults@2
+  condition: succeededOrFailed()
+  inputs:
+    testResultsFiles: out/test-*.xml
+    testRunTitle: Publish test results for Python
+
+- task: PublishCodeCoverageResults@1
+  inputs:
+    codeCoverageTool: Cobertura
+    summaryFileLocation: coverage.xml
 
 - script: |
     set -o errexit -o pipefail

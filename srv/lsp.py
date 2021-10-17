@@ -319,13 +319,13 @@ class TextDocument:
         self._mode = None
         self._scanpos = 0
         self.lines: List[str] = []
-        self._cbs: List[Callable] = []
+        self._cbs: List[Callable[['TextDocument'], Any]] = []
         self._virtual = self.uri.scheme != 'file'
         self.loaded = False
         if text:
             self._set_text(text)
 
-    def on_change(self, cb):
+    def on_change(self, cb: Callable[['TextDocument'], Any]):
         """
         Register a callback to be called each time the document is changed.
 
@@ -1036,7 +1036,7 @@ class Snippet:
         self.text = value
         self._next_tabstop = 1
 
-    def add_text(self, text):
+    def add_text(self, text: str):
         """Add raw text to the snippet."""
         self.text += text
 
@@ -1158,7 +1158,7 @@ class LSPServer(RPCServer):
 
         return caps
 
-    def dbg(self, *args):
+    def dbg(self, *args: str):
         """Write a debug message to the log file, and report it to the client, if tracing is enabled."""
         super().dbg(*args)
         if self.trace != 'off':

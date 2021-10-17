@@ -4794,6 +4794,7 @@ class Symbol(object):
         self.implies = []
         self.ranges = []
 
+        self.name = \
         self.user_value = \
         self.choice = \
         self.env_var = \
@@ -5638,6 +5639,13 @@ class MenuNode(object):
         self.selects = []
         self.implies = []
         self.ranges = []
+        self.item = \
+        self.filename = \
+        self.linenr = \
+        self.is_menuconfig = \
+        self.list = \
+        self.help = \
+        self.prompt = None
 
     @property
     def orig_prompt(self):
