@@ -215,6 +215,7 @@ def _loc(sym: kconfig.Symbol):
 def _symbolitem(sym: kconfig.Symbol):
     item = {
         'name': sym.name,
+        'prompt': _prompt(sym, True),
         'visible': sym.visibility > 0,
         'type': kconfig.TYPE_TO_STR[sym.type],
         'help': next((n.help for n in sym.nodes if n.help), '')
