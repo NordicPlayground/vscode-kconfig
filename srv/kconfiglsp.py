@@ -287,7 +287,10 @@ class KconfigMenu:
                 item['options'] = list(sym.assignable)
             item['kind'] = 'symbol'
         elif isinstance(sym, kconfig.Choice):
+            item['type'] = kconfig.TYPE_TO_STR[sym.type]
             item['val'] = _prompt(sym.selection)
+            item['userValue'] = sym.user_value
+            item['name'] = sym.name
             item['kind'] = 'choice'
         elif sym == kconfig.COMMENT:
             item['kind'] = 'comment'
