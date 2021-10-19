@@ -166,7 +166,7 @@ def _children(node):
 
         for choice_node in choice.nodes:
             for child in get_children(choice_node):
-                if not isinstance(child, kconfig.Symbol):
+                if not isinstance(child.item, kconfig.Symbol):
                     children.append(child)
                 elif child.item not in symbols or choice_node is node:
                     children.append(child)
