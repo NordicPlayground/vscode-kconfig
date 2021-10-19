@@ -1112,7 +1112,8 @@ class KconfigServer(LSPServer):
                 common = os.path.commonprefix([word, 'CONFIG_'])
                 if len(common) < len('CONFIG_'):
                     word = 'CONFIG_' + word[len(common):]
-                show_non_visible = True
+                else:
+                    show_non_visible = True
 
         else:
             word = None
