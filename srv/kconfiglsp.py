@@ -1093,6 +1093,8 @@ class KconfigServer(LSPServer):
 
         if not ctx.valid:
             self.refresh_ctx(ctx)
+            if not ctx.valid:
+                return
 
         doc = documentStore.get(uri)
         if not doc:
