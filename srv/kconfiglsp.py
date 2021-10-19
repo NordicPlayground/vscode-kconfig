@@ -910,14 +910,15 @@ class KconfigServer(LSPServer):
             self.dbg('Parsing...')
             ctx.parse()
 
-        self.dbg('Load config...')
-        ctx.load_config()
-
         if ctx.valid:
-            self.dbg('Done. {} diags, {} warnings'.format(
-                sum([len(file.diags) for file in ctx.conf_files]), len(ctx._kconfig.warnings if ctx._kconfig else 0)))
+            self.dbg('Load config...')
+            ctx.load_config()
 
-        for conf in ctx.conf_files:
+            self.dbg('Done. {} diags, {} warnings'.format(
+                sum([len(file.diags) for file in ctx.all_conf_files]),
+                len(ctx._kconfig.warnings if ctx._kconfig else 0)))
+
+        for conf in ctx.all_conf_files:
             self.publish_diags(conf.uri, conf.diags)
 
         self.publish_diags(Uri.file('command-line'), ctx.cmd_diags)
