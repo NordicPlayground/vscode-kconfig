@@ -527,10 +527,14 @@ class KconfigContext:
         if self._kconfig:
             self._kconfig.valid = False
 
+    @property
+    def all_conf_files(self):
+        """All configuration files going into this build. Includes the board conf file."""
+        return [self.board.conf_file, *self.conf_files]
+
     def has_file(self, uri: Uri):
         """Check whether the given URI represents a conf file this context uses. Does not check board files."""
-        return any([(file.uri == uri)
-                    for file in self.conf_files if file.doc]) or self.board.conf_file.uri == uri
+        return any([(file.uri == uri) for file in self.all_conf_files])
 
     def _node_id(self, node: kconfig.MenuNode):
         """Encode a unique ID string for the given menu node"""
@@ -619,8 +623,7 @@ class KconfigContext:
 
     def conf_file(self, uri):
         """Get the config file with the given URI, if any."""
-        return next((file for file in [self.board.conf_file] + self.conf_files if file.uri == uri),
-                    None)
+        return next((file for file in self.all_conf_files if file.uri == uri), None)
 
     def diags(self, uri):
         """Get the diagnostics for the conf file with the given URI"""
@@ -636,7 +639,7 @@ class KconfigContext:
             list.clear()
 
         self.cmd_diags.clear()
-        for conf in self.conf_files:
+        for conf in self.all_conf_files:
             conf.diags.clear()
 
     def symbols(self, filter):
@@ -656,9 +659,8 @@ class KconfigContext:
         return map(_symbolitem, self.symbols(query))
 
     def all_entries(self) -> List[ConfEntry]:
-        files = [self.board.conf_file] + self.conf_files
         entries = []
-        for file in files:
+        for file in self.all_conf_files:
             entries.extend(file.entries())
         return entries
 
