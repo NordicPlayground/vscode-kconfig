@@ -1029,14 +1029,22 @@ class KconfigServer(LSPServer):
             self.dbg('\t' + "\n\t".join([str(f) for f in ctx.conf_files]))
             self.refresh_ctx(ctx)
 
+    def get_ctx(self, id):
+        """Get context from ID, or fall back to other contexts."""
+        if id:
+            return self.ctx.get(id)
+        if self.main_uri:
+            return self.ctx.get(str(self.main_uri))
+        return self.last_ctx
+
     @handler('kconfig/search')
     def handle_search(self, params):
-        ctx = self.ctx[params['ctx']]
+        ctx = self.get_ctx(params.get('ctx'))
         if not ctx:
             return
 
         return {
-            'ctx': params['ctx'],
+            'ctx': str(ctx.uri),
             'query': params['query'],
             'symbols': ctx.symbol_search(params['query']),
         }
@@ -1049,15 +1057,7 @@ class KconfigServer(LSPServer):
 
     @handler('kconfig/getMenu')
     def handle_get_menu(self, params):
-        if 'ctx' in params:
-            ctx = self.ctx[params['ctx']]
-        elif self.main_uri:
-            ctx = self.ctx.get(str(self.main_uri))
-        elif self.last_ctx:
-            ctx = self.last_ctx
-        else:
-            ctx = None
-
+        ctx = self.get_ctx(params.get('ctx'))
         if not ctx:
             return
 
@@ -1070,7 +1070,10 @@ class KconfigServer(LSPServer):
 
     @handler('kconfig/setVal')
     def handle_setval(self, params):
-        ctx = self.ctx[params['ctx']]
+        ctx = self.get_ctx(params.get('ctx'))
+        if not ctx:
+            return
+
         if 'val' in params:
             ctx.set(params['name'], params['val'])
         else:
