@@ -252,7 +252,7 @@ class KconfigMenu:
 
     @property
     def name(self):
-        return str(self.node)
+        return self.node.prompt[0]
 
     def _menuitem(self, node: kconfig.MenuNode):
         sym = node.item
