@@ -190,20 +190,6 @@ def _suboption_depth(node):
     return depth
 
 
-def _path(node):
-    """Unique path ID of each node, allowing us to identify each node in a menu"""
-    if node.parent:
-        i = 0
-        it = node.parent.list
-        while it and it != node:
-            it = it.next
-            i += 1
-        if not it:
-            raise RPCError(KconfigErrorCode.DESYNC, 'Tree is invalid')
-        return _path(node.parent) + [i]
-    return [0]
-
-
 def _loc(sym: kconfig.Symbol):
     """Get a list of locations where the given kconfig symbol is defined"""
     return [
