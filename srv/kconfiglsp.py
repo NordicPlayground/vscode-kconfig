@@ -656,7 +656,7 @@ class KconfigContext:
 
     def symbol_search(self, query):
         """Search for a symbol with a specific name. Returns a list of symbols as SymbolItems."""
-        return map(_symbolitem, self.symbols(query))
+        return [_symbolitem(sym) for sym in self.symbols(query)]
 
     def all_entries(self) -> List[ConfEntry]:
         entries = []
