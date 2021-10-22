@@ -52,6 +52,7 @@ class Uri:
         """
         self.scheme = scheme or ''
         self.authority = authority or ''
+        path = re.sub(r'^/(\w:/)', r'\1', path)
         self.path = path or ''
         self.query = query or ''
         self.fragment = fragment or ''
