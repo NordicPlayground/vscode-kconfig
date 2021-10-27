@@ -8,10 +8,6 @@
 		"url": "https://www.nordicsemi.com/"
 	},
 	"version": "0.0.0",
-	"repository": {
-		"url": "https://github.com/NordicPlayground/vscode-nrf-kconfig",
-		"type": "git"
-	},
 	"engines": {
 		"vscode": "^1.37.0"
 	},
@@ -25,7 +21,7 @@
 		"Linters"
 	],
 	"bugs": {
-		"url": "https://github.com/trond-snekvik/kconfig-lang/issues"
+		"url": "https://devzone.nordicsemi.com"
 	},
 	"keywords": [
 		"Kconfig",
