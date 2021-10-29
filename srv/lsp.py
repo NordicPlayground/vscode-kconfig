@@ -1246,12 +1246,14 @@ class LSPServer(RPCServer):
         self.rootUri = params['rootUri']
         if 'trace' in params:
             self.trace = params['trace']
-        if 'workspaceFolders' in params:
+        if params.get('workspaceFolders'):
             self.dbg('workspaceFolders: ' + str(params['workspaceFolders']))
             self.workspaceFolders = [
                 WorkspaceFolder(Uri.parse(folder['uri']), folder['name'])
                 for folder in params['workspaceFolders']
             ]
+        else:
+            self.workspaceFolders = []
         return {
             'capabilities': self.capabilities(),
             'serverInfo': {

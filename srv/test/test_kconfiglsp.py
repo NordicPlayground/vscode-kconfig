@@ -84,6 +84,11 @@ def test_init():
     assert caps['textDocumentSync'] == 2  # Incremental
 
 
+def test_init_no_workspace():
+    rsp = request('initialize', {'rootUri': str(Uri.file(zephyr_root)), 'workspaceFolders': None})
+    assert rsp.error == None  # Should be an acceptable parameter.
+
+
 def test_initialized_notification():
     test_init()
 
