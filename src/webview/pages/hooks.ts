@@ -1,3 +1,8 @@
+/* Copyright (c) 2021 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-1-Clause
+ */
+
 import { StateUpdater, useState, useCallback } from 'preact/hooks';
 import { CallFunctionResponseMessage, StateUpdateMessage } from '../messages';
 import { vscode } from '../vscodeInstance';
