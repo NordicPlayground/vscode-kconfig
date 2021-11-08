@@ -1082,9 +1082,9 @@ class Snippet:
             number = self._next_tabstop
 
         # Don't try to format and insert an empty list
-        choices_text = '|{choices}|'.format(choices=','.join(choices)) if choices else ''
+        choices_text = f'|{",".join(choices)}|' if choices else ''
 
-        self.text += '${{{number}{choices_text}}}'.format(number=number, choices_text=choices_text)
+        self.text += f'${{{number}{choices_text}}}'
         self._next_tabstop = number + 1
 
 
