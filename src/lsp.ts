@@ -18,9 +18,7 @@ let client: LanguageClient;
 const knownContexts: vscode.Uri[] = [];
 
 async function startServer(ctx: vscode.ExtensionContext) {
-    const pythonConfig = vscode.workspace.getConfiguration('python');
-    const python = pythonConfig.get<string>('defaultInterpreterPath') ?? 'python';
-
+    const python = kEnv.getConfig<string>('python');
     const serverOptions: ServerOptions = {
         command: python,
         args: [path.resolve(ctx.extensionPath, 'srv', 'kconfiglsp.py')],
@@ -39,12 +37,15 @@ async function startServer(ctx: vscode.ExtensionContext) {
             },
             {
                 language: 'c',
+                scheme: 'file',
             },
             {
                 language: 'cpp',
+                scheme: 'file',
             },
             {
                 language: 'kconfig',
+                scheme: 'file',
             },
         ],
 
