@@ -52,7 +52,7 @@ class Packet:
 def pull_packet(io: MockStream):
     packet = Packet()
     while True:
-        line = io.pull(io.output.index('\n') + 1)
+        line = io.pull_line()
         if len(line.strip()) == 0:
             break
         [name, value] = [part.strip() for part in line.split(':', 2)]
@@ -93,7 +93,8 @@ def test_invalid_len():
 
     try:
         srv.loop()
-    except json.decoder.JSONDecodeError:
+    except Exception as e:
+        assert str(e).startswith('FATAL: Failed to decode command.')
         assert len(srv.received) == 0
         return  # expected, as the value isn't long enough
     except:
@@ -125,6 +126,33 @@ def test_unknown_headers():
         assert len(srv.received) == 1
         return
     assert False
+
+
+def test_recv_unicode():
+    srv = Server()
+
+    # Default encoding (utf-8):
+    srv.io.push('\r\n'.join([
+        'Content-Length: 101', '',
+        '{"jsonrpc":"2.0","id": 5,"method":"request","params":{"text":"所有符號都應該是可解碼的"}}'
+    ]))
+
+    # Explicitly utf-8 encoded:
+    srv.io.push('\r\n'.join([
+        'Content-Length: 101', 'Content-Type: "application/vscode-jsonrpc; charset=utf-8"', '',
+        '{"jsonrpc":"2.0","id": 6,"method":"request","params":{"text":"所有符號都應該是可解碼的"}}'
+    ]))
+
+    try:
+        srv.loop()
+    except StreamEnd:
+        pass
+
+    # got a response that is decoded correctly:
+    for id in range(5, 6):
+        rsp = pull_packet(srv.io).as_object()
+        assert rsp['id'] == id
+        assert rsp['result']['text'] == '所有符號都應該是可解碼的'
 
 
 def test_notify():
