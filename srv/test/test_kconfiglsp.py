@@ -48,7 +48,7 @@ def recv(count=10) -> List[RPCResponse]:
 
 def request(name, params=None):
     global req_id
-    io.output = ''  # flush
+    io.output = b''  # flush
     req_id += 1
     req = RPCRequest(req_id, name, params)
     srv.handle(req)
