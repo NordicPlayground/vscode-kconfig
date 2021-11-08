@@ -225,8 +225,8 @@ class RPCServer:
         ostream: TextIO | None
             Output stream for the incoming data, or sys.stdout if None.
         """
-        self._send_stream = ostream if ostream else sys.stdout
-        self._recv_stream = istream if istream else sys.stdin
+        self._send_stream = ostream if ostream else sys.stdout.buffer
+        self._recv_stream = istream if istream else sys.stdin.buffer
         self._req = None
         self.log_file = 'lsp.log'
         self.logging = False
@@ -259,7 +259,9 @@ class RPCServer:
         length = 0
         content_type = ''
         while True:
-            line = self._recv_stream.readline().strip()
+            # Header is encoded in ascii:
+            # https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
+            line = self._recv_stream.readline().decode('ascii').strip()
             if len(line) == 0:
                 return length, content_type
 
@@ -358,17 +360,24 @@ class RPCServer:
             LINE_ENDING.join([
                 'Content-Type: "application/vscode-jsonrpc; charset=utf-8"',
                 'Content-Length: ' + str(len(raw)), '', raw
-            ]))
+            ]).encode('utf-8'))
         self._send_stream.flush()
 
     def _recv(self) -> Union[RPCNotification, RPCRequest, RPCResponse]:
         """Internal: Receive an RPCMessage from the recv_stream"""
-        length, _ = self._read_headers()
-        data = self._recv_stream.read(length)
+        length, content_type = self._read_headers()
+
+        # Only utf-8 encoding is supported:
+        data = self._recv_stream.read(length).decode('utf-8')
 
         self.dbg('recv: {}'.format(data))
 
-        obj = json.loads(data)
+        try:
+            obj = json.loads(data)
+        except json.JSONDecodeError as e:
+            raise Exception(
+                f'FATAL: Failed to decode command.\n\tContent-Length: {length}\n\tContent type: {content_type}\n\tData: {data}'
+            )
 
         return RPCMsg.from_obj(obj)
 
