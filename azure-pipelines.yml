@@ -58,7 +58,6 @@ jobs:
         versionSpec: 14
       displayName: Install Node.js
 
-
     - script: |
         set -o errexit -o pipefail
         npm ci
@@ -87,4 +86,3 @@ jobs:
       inputs:
         targetPath: $(Build.ArtifactStagingDirectory)
       displayName: Publish artifact
-
