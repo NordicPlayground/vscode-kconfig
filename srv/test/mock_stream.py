@@ -12,8 +12,8 @@ class StreamEnd(Exception):
 
 class MockStream:
     def __init__(self):
-        self.input = b''
-        self.output = b''
+        self.input = b""
+        self.output = b""
 
     def read(self, n=-1):
         if len(self.input) < n:
@@ -21,7 +21,7 @@ class MockStream:
 
         if n == -1:
             retval = self.input
-            self.input = b''
+            self.input = b""
         else:
             retval = self.input[:n]
             self.input = self.input[n:]
@@ -29,7 +29,7 @@ class MockStream:
 
     def readline(self):
         try:
-            idx = self.input.index(b'\n')
+            idx = self.input.index(b"\n")
         except ValueError as e:
             raise StreamEnd()
         val = self.read(idx + 1)
@@ -39,7 +39,7 @@ class MockStream:
     def write(self, buf: bytes):
         self.output += buf
 
-    def push(self, buf: str, encoding='utf-8'):
+    def push(self, buf: str, encoding="utf-8"):
         self.input += buf.encode(encoding)
 
     def flush(self):
@@ -48,15 +48,15 @@ class MockStream:
     def pull(self, n=-1):
         if n == -1 or n > len(self.output):
             retval = self.output
-            self.output = b''
+            self.output = b""
         else:
             retval = self.output[:n]
             self.output = self.output[n:]
-        return retval.decode('utf-8')
+        return retval.decode("utf-8")
 
     def pull_line(self):
         try:
-            idx = self.output.index(b'\n')
+            idx = self.output.index(b"\n")
         except ValueError as e:
             raise StreamEnd()
         return self.pull(idx + 1)
@@ -67,15 +67,17 @@ class MockStream:
             header = self.pull_line().strip()
             if len(header) == 0:  # blank header marks the end
                 break
-            [key, value] = header.split(':', 2)
+            [key, value] = header.split(":", 2)
             headers[key.strip()] = value.strip()
         else:
-            raise EOFError('Expected headers to end')
+            raise EOFError("Expected headers to end")
 
-        length = int(headers['Content-Length'])
+        length = int(headers["Content-Length"])
         obj = json.loads(self.pull(length))
         return rpc.RPCMsg.from_obj(obj)
 
     def send(self, msg: rpc.RPCMsg):
         content = str(msg)
-        self.push(rpc.LINE_ENDING.join([f'Content-Length: {len(content)}', '', content]))
+        self.push(
+            rpc.LINE_ENDING.join([f"Content-Length: {len(content)}", "", content])
+        )

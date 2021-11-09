@@ -10,12 +10,29 @@ import re
 import enum
 import argparse
 from rpc import handler, RPCError
-from lsp import (CodeAction, CompletionItemKind, Diagnostic, DiagnosticRelatedInfo, DocumentSymbol,
-                 FileChangeKind, InsertTextFormat, LSPServer, MarkupContent, Position, Location,
-                 Snippet, SymbolInformation, SymbolKind, TextEdit, Uri, TextDocument, Range,
-                 documentStore)
+from lsp import (
+    CodeAction,
+    CompletionItemKind,
+    Diagnostic,
+    DiagnosticRelatedInfo,
+    DocumentSymbol,
+    FileChangeKind,
+    InsertTextFormat,
+    LSPServer,
+    MarkupContent,
+    Position,
+    Location,
+    Snippet,
+    SymbolInformation,
+    SymbolKind,
+    TextEdit,
+    Uri,
+    TextDocument,
+    Range,
+    documentStore,
+)
 
-VERSION = '1.0'
+VERSION = "1.0"
 
 #################################################################################################################################
 # Kconfig LSP Server
@@ -41,11 +58,12 @@ VERSION = '1.0'
 # - DTS_ROOT_BINDINGS -> ${DTS_ROOTs}/dts/bindings
 
 KCONFIG_WARN_LVL = Diagnostic.WARNING
-ID_SEP = '@'
+ID_SEP = "@"
 
 
 class KconfigErrorCode(enum.IntEnum):
     """Set of Kconfig specific error codes reported in response to failing requests"""
+
     UNKNOWN_NODE = 1  # The specified node is unknown.
     # The kconfig data has been changed, and the menu tree is out of sync.
     DESYNC = 2
@@ -53,7 +71,7 @@ class KconfigErrorCode(enum.IntEnum):
 
 
 class Kconfig(kconfig.Kconfig):
-    def __init__(self, filename='Kconfig'):
+    def __init__(self, filename="Kconfig"):
         """
         Wrapper of kconfiglib's Kconfig object.
 
@@ -76,14 +94,16 @@ class Kconfig(kconfig.Kconfig):
         This is split out from the constructor to avoid nixing the whole object on parsing errors.
         """
         self.valid = False
-        self._init(self.filename, True, False, 'utf-8')
+        self._init(self.filename, True, False, "utf-8")
         if self.unique_defined_syms:
             self.valid = True
 
     def loc(self):
         if self.filename and self.linenr != None:
-            return Location(Uri.file(os.path.join(self.srctree, self.filename)),
-                            Range(Position(self.linenr - 1, 0), Position(self.linenr - 1, 99999)))
+            return Location(
+                Uri.file(os.path.join(self.srctree, self.filename)),
+                Range(Position(self.linenr - 1, 0), Position(self.linenr - 1, 99999)),
+            )
 
     # Overriding _open to work on virtual file storage when required:
     def _open(self, filename, mode):
@@ -94,17 +114,18 @@ class Kconfig(kconfig.Kconfig):
             return doc
         if os.path.isdir(filename):
             raise kconfig.KconfigError(
-                f'Attempting to open directory {filename} as file @{self.filename}:{self.linenr}')
+                f"Attempting to open directory {filename} as file @{self.filename}:{self.linenr}"
+            )
         return super()._open(filename, mode)
 
     def _warn(self, msg: str, filename=None, linenr=None):
         super()._warn(msg, filename, linenr)
         if not filename:
-            filename = ''
+            filename = ""
         if not linenr:
             linenr = 1
 
-        ignored_diags = ['set more than once.']
+        ignored_diags = ["set more than once."]
 
         if len([ignore for ignore in ignored_diags if ignore in msg]) > 0:
             # Ignore this diagnostic. It is either too verbose, or already covered by some
@@ -116,11 +137,11 @@ class Kconfig(kconfig.Kconfig):
 
         # Strip out potentially very long definition references.
         # They're redundant, since the user can ctrl+click on the symbol to interactively find them.
-        msg = re.sub(r'\s*\(defined at.*?\)\s*', ' ', msg)
+        msg = re.sub(r"\s*\(defined at.*?\)\s*", " ", msg)
 
         self.diags[filename].append(
-            Diagnostic(msg,
-                       Position(int(linenr - 1), 0).range, KCONFIG_WARN_LVL))
+            Diagnostic(msg, Position(int(linenr - 1), 0).range, KCONFIG_WARN_LVL)
+        )
 
 
 def _prompt(sym: kconfig.Symbol, ignore_expr=False):
@@ -139,12 +160,16 @@ def _prompt(sym: kconfig.Symbol, ignore_expr=False):
 
 def _visible(node):
     """Check whether a node is visible."""
-    return node.prompt and kconfig.expr_value(node.prompt[1]) and not \
-        (node.item == kconfig.MENU and not kconfig.expr_value(node.visibility))
+    return (
+        node.prompt
+        and kconfig.expr_value(node.prompt[1])
+        and not (node.item == kconfig.MENU and not kconfig.expr_value(node.visibility))
+    )
 
 
 def _children(node):
     """Get the child nodes of a given MenuNode"""
+
     def get_children(node):
         children = []
         node = node.list
@@ -180,7 +205,7 @@ def _children(node):
 
 def _suboption_depth(node):
     """In menuconfig, nodes that aren't children of menuconfigs are rendered
-       in the same menu, but indented. Get the depth of this indentation.
+    in the same menu, but indented. Get the depth of this indentation.
     """
     parent = node.parent
     depth = 0
@@ -193,23 +218,26 @@ def _suboption_depth(node):
 def _loc(sym: kconfig.Symbol):
     """Get a list of locations where the given kconfig symbol is defined"""
     return [
-        Location(Uri.file(os.path.join(n.kconfig.srctree, n.filename)),
-                 Position(n.linenr - 1, 0).range) for n in sym.nodes
+        Location(
+            Uri.file(os.path.join(n.kconfig.srctree, n.filename)),
+            Position(n.linenr - 1, 0).range,
+        )
+        for n in sym.nodes
     ]
 
 
 def _symbolitem(sym: kconfig.Symbol):
     item = {
-        'name': sym.name,
-        'prompt': _prompt(sym, True),
-        'visible': sym.visibility > 0,
-        'type': kconfig.TYPE_TO_STR[sym.type],
-        'help': next((n.help for n in sym.nodes if n.help), '')
+        "name": sym.name,
+        "prompt": _prompt(sym, True),
+        "visible": sym.visibility > 0,
+        "type": kconfig.TYPE_TO_STR[sym.type],
+        "help": next((n.help for n in sym.nodes if n.help), ""),
     }
 
     prompt = _prompt(sym)
     if prompt:
-        item['prompt'] = prompt
+        item["prompt"] = prompt
     return item
 
 
@@ -243,47 +271,43 @@ class KconfigMenu:
     def _menuitem(self, node: kconfig.MenuNode):
         sym = node.item
         item = {
-            'visible':
-            _visible(node) != 0,
-            'loc':
-            Location(Uri.file(os.path.join(self.ctx.env['ZEPHYR_BASE'], node.filename)),
-                     Position(node.linenr - 1, 0).range),
-            'isMenu':
-            node.is_menuconfig,
-            'hasChildren':
-            node.list != None or isinstance(sym, kconfig.Choice),
-            'depth':
-            _suboption_depth(node),
-            'id':
-            self.ctx._node_id(node),
+            "visible": _visible(node) != 0,
+            "loc": Location(
+                Uri.file(os.path.join(self.ctx.env["ZEPHYR_BASE"], node.filename)),
+                Position(node.linenr - 1, 0).range,
+            ),
+            "isMenu": node.is_menuconfig,
+            "hasChildren": node.list != None or isinstance(sym, kconfig.Choice),
+            "depth": _suboption_depth(node),
+            "id": self.ctx._node_id(node),
         }
 
         if node.prompt:
-            item['prompt'] = node.prompt[0]
+            item["prompt"] = node.prompt[0]
 
-        if hasattr(node, 'help') and node.help:
-            item['help'] = node.help
+        if hasattr(node, "help") and node.help:
+            item["help"] = node.help
 
         if isinstance(sym, kconfig.Symbol):
-            item['type'] = kconfig.TYPE_TO_STR[sym.orig_type]
-            item['val'] = sym.str_value
-            item['userValue'] = sym.user_value
-            item['name'] = sym.name
-            if hasattr(sym, 'assignable') and sym.assignable:
-                item['options'] = list(sym.assignable)
-            item['kind'] = 'symbol'
+            item["type"] = kconfig.TYPE_TO_STR[sym.orig_type]
+            item["val"] = sym.str_value
+            item["userValue"] = sym.user_value
+            item["name"] = sym.name
+            if hasattr(sym, "assignable") and sym.assignable:
+                item["options"] = list(sym.assignable)
+            item["kind"] = "symbol"
         elif isinstance(sym, kconfig.Choice):
-            item['type'] = kconfig.TYPE_TO_STR[sym.type]
-            item['val'] = _prompt(sym.selection)
-            item['userValue'] = sym.user_value
-            item['name'] = sym.name
-            item['kind'] = 'choice'
+            item["type"] = kconfig.TYPE_TO_STR[sym.type]
+            item["val"] = _prompt(sym.selection)
+            item["userValue"] = sym.user_value
+            item["name"] = sym.name
+            item["kind"] = "choice"
         elif sym == kconfig.COMMENT:
-            item['kind'] = 'comment'
+            item["kind"] = "comment"
         elif sym == kconfig.MENU:
-            item['kind'] = 'menu'
+            item["kind"] = "menu"
         else:
-            item['kind'] = 'unknown'
+            item["kind"] = "unknown"
 
         return item
 
@@ -291,15 +315,16 @@ class KconfigMenu:
     def items(self):
         """The list of MenuItems this menu presents."""
         return [
-            self._menuitem(node) for node in _children(self.node)
+            self._menuitem(node)
+            for node in _children(self.node)
             if self.show_all or (node.prompt and _visible(node))
         ]
 
     def to_dict(self):
         return {
-            'name': self.name,
-            'id': self.id,
-            'items': self.items,
+            "name": self.name,
+            "id": self.id,
+            "items": self.items,
         }
 
 
@@ -332,13 +357,13 @@ class ConfEntry:
         return self.raw.startswith('"') and self.raw.endswith('"')
 
     def is_bool(self):
-        return self.raw in ['y', 'n']
+        return self.raw in ["y", "n"]
 
     def is_hex(self):
-        return re.match(r'0x[a-fA-F\d]+', self.raw)
+        return re.match(r"0x[a-fA-F\d]+", self.raw)
 
     def is_int(self):
-        return re.match(r'\d+', self.raw)
+        return re.match(r"\d+", self.raw)
 
     @property
     def value(self):
@@ -369,9 +394,11 @@ class ConfEntry:
     @property
     def line_range(self):
         """Entire line range."""
-        return Range(Position(self.range.start.line, 0), Position(self.range.start.line + 1, 0))
+        return Range(
+            Position(self.range.start.line, 0), Position(self.range.start.line + 1, 0)
+        )
 
-    def remove(self, title='Remove entry') -> CodeAction:
+    def remove(self, title="Remove entry") -> CodeAction:
         """Create a code action that will remove this entry"""
         action = CodeAction(title)
         action.edit.add(self.loc.uri, TextEdit.remove(self.line_range))
@@ -400,11 +427,17 @@ class ConfFile:
         for linenr, line in enumerate(self.doc.lines):
             match = re.match(r'^\s*(CONFIG_(\w+))\s*\=("[^"]+"|\w+)', line)
             if match:
-                range = Range(Position(linenr, match.start(1)), Position(linenr, match.end(1)))
-                value_range = Range(Position(linenr, match.start(3)),
-                                    Position(linenr, match.end(3)))
-                entries.append(ConfEntry(match[2], Location(self.uri, range), match[3],
-                                         value_range))
+                range = Range(
+                    Position(linenr, match.start(1)), Position(linenr, match.end(1))
+                )
+                value_range = Range(
+                    Position(linenr, match.start(3)), Position(linenr, match.end(3))
+                )
+                entries.append(
+                    ConfEntry(
+                        match[2], Location(self.uri, range), match[3], value_range
+                    )
+                )
         return entries
 
     def find(self, name) -> List[ConfEntry]:
@@ -425,7 +458,7 @@ class BoardConf:
     @property
     def conf_file(self):
         """Get the path of the conf file that must be included when building with this board"""
-        return ConfFile(Uri.file(os.path.join(self.dir, self.name + '_defconfig')))
+        return ConfFile(Uri.file(os.path.join(self.dir, self.name + "_defconfig")))
 
 
 class KconfigContext:
@@ -437,7 +470,7 @@ class KconfigContext:
         self.uri = uri
         self.env = env
         self.conf_files = conf_files
-        self.board = BoardConf(env['BOARD'], env['ARCH'], env['BOARD_DIR'])
+        self.board = BoardConf(env["BOARD"], env["ARCH"], env["BOARD_DIR"])
         self.version = 0
         self._root = root
         self._kconfig: Optional[Kconfig] = None
@@ -456,7 +489,7 @@ class KconfigContext:
         for key, value in self.env.items():
             os.environ[key] = value
 
-        functions_path = os.path.join(self.env['ZEPHYR_BASE'], 'scripts', 'kconfig')
+        functions_path = os.path.join(self.env["ZEPHYR_BASE"], "scripts", "kconfig")
         if not functions_path in sys.path:
             sys.path.append(functions_path)
 
@@ -483,7 +516,7 @@ class KconfigContext:
 
             # Strip out the GCC-style location indicator that is placed on the start of the
             # error message for some messages:
-            match = re.match(r'(^[\w\/\\-]+:\d+:\s*)?(error:)?\s*(.*)', str(e))
+            match = re.match(r"(^[\w\/\\-]+:\d+:\s*)?(error:)?\s*(.*)", str(e))
             if match:
                 msg = match[3]
             else:
@@ -492,12 +525,16 @@ class KconfigContext:
             if loc:
                 self.kconfig_diag(loc.uri, Diagnostic.err(msg, loc.range))
             else:
-                self.cmd_diags.append(Diagnostic.err(msg, Range(Position.start(),
-                                                                Position.start())))
+                self.cmd_diags.append(
+                    Diagnostic.err(msg, Range(Position.start(), Position.start()))
+                )
         except Exception as e:
             self.cmd_diags.append(
-                Diagnostic.err('Kconfig failed: ' + str(e), Range(Position.start(),
-                                                                  Position.start())))
+                Diagnostic.err(
+                    "Kconfig failed: " + str(e),
+                    Range(Position.start(), Position.start()),
+                )
+            )
         self.version += 1
 
     def kconfig_diag(self, uri: Uri, diag: Diagnostic):
@@ -525,24 +562,24 @@ class KconfigContext:
     def _node_id(self, node: kconfig.MenuNode):
         """Encode a unique ID string for the given menu node"""
         if not self._kconfig:
-            return ''
+            return ""
 
         if node == self._kconfig.top_node:
-            parts = ['MAINMENU']
+            parts = ["MAINMENU"]
         elif node.item == kconfig.MENU:
-            parts = ['MENU', str(self._kconfig.menus.index(node))]
+            parts = ["MENU", str(self._kconfig.menus.index(node))]
         elif isinstance(node.item, kconfig.Symbol):
-            parts = ['SYM', node.item.name, str(node.item.nodes.index(node))]
+            parts = ["SYM", node.item.name, str(node.item.nodes.index(node))]
         elif isinstance(node.item, kconfig.Choice):
             parts = [
-                'CHOICE',
+                "CHOICE",
                 str(self._kconfig.choices.index(node.item)),
-                str(node.item.nodes.index(node))
+                str(node.item.nodes.index(node)),
             ]
         elif node.item == kconfig.COMMENT:
-            parts = ['COMMENT', str(self._kconfig.comments.index(node))]
+            parts = ["COMMENT", str(self._kconfig.comments.index(node))]
         else:
-            parts = ['UNKNOWN', node.filename, str(node.linenr)]
+            parts = ["UNKNOWN", node.filename, str(node.linenr)]
 
         parts.insert(0, str(self.version))
 
@@ -557,19 +594,19 @@ class KconfigContext:
             # kconfig tree, the node IDs depend on the fact that the tree is unchanged:
             return None
 
-        if type == 'MENU':
+        if type == "MENU":
             return self._kconfig.menus[int(parts[0])]
 
-        if type == 'SYM':
+        if type == "SYM":
             return self._kconfig.syms[parts[0]].nodes[int(parts[1])]
 
-        if type == 'CHOICE':
+        if type == "CHOICE":
             return self._kconfig.choices[int(parts[0])].nodes[int(parts[1])]
 
-        if type == 'COMMENT':
+        if type == "COMMENT":
             return self._kconfig.comments[int(parts[0])]
 
-        if type == 'MAINMENU':
+        if type == "MAINMENU":
             return self._kconfig.top_node
 
     def get_menu(self, id=None, show_all=False):
@@ -590,7 +627,9 @@ class KconfigContext:
         """Set a config value (without changing the conf files)"""
         sym = self.get(name)
         if not sym:
-            raise RPCError(KconfigErrorCode.UNKNOWN_NODE, 'Unknown symbol {}'.format(name))
+            raise RPCError(
+                KconfigErrorCode.UNKNOWN_NODE, "Unknown symbol {}".format(name)
+            )
         valid = sym.set_value(val)
         if valid and not name in self.modified:
             self.modified.append(name)
@@ -630,14 +669,16 @@ class KconfigContext:
 
     def symbols(self, filter):
         """Get a list of symbols matching the given filter string. Can be used for search or auto completion."""
-        if filter and filter.startswith('CONFIG_'):
-            filter = filter[len('CONFIG_'):]
+        if filter and filter.startswith("CONFIG_"):
+            filter = filter[len("CONFIG_") :]
         return [
-            sym for sym in self._kconfig.syms.values()
+            sym
+            for sym in self._kconfig.syms.values()
             # Literal values are also symbols, but can be filtered out by checking sym.nodes
             # which only exists if this is a proper config symbol:
-            if hasattr(sym, 'nodes') and len(sym.nodes) and (
-                not filter or _filter_match(filter, sym.name))
+            if hasattr(sym, "nodes")
+            and len(sym.nodes)
+            and (not filter or _filter_match(filter, sym.name))
         ]
 
     def symbol_search(self, query):
@@ -655,22 +696,33 @@ class KconfigContext:
     def check_undefined(self, file: ConfFile, entry: ConfEntry, sym: kconfig.Symbol):
         if sym.type == kconfig.UNKNOWN:
             file.diags.append(
-                Diagnostic.err(f'Undefined symbol CONFIG_{sym.name}', entry.full_range))
+                Diagnostic.err(f"Undefined symbol CONFIG_{sym.name}", entry.full_range)
+            )
             return True
 
     def check_type(self, file: ConfFile, entry: ConfEntry, sym: kconfig.Symbol):
         """Check that the configured value has the right type."""
         if kconfig.TYPE_TO_STR[sym.type] != entry.type:
-            diag = Diagnostic.err(f'Invalid type. Expected {kconfig.TYPE_TO_STR[sym.type]}',
-                                  entry.full_range)
+            diag = Diagnostic.err(
+                f"Invalid type. Expected {kconfig.TYPE_TO_STR[sym.type]}",
+                entry.full_range,
+            )
 
             # Add action to convert between hex and int:
-            if sym.type in [kconfig.HEX, kconfig.INT] and (entry.is_hex() or entry.is_int()):
-                action = CodeAction('Convert value to ' + str(kconfig.TYPE_TO_STR[sym.type]))
+            if sym.type in [kconfig.HEX, kconfig.INT] and (
+                entry.is_hex() or entry.is_int()
+            ):
+                action = CodeAction(
+                    "Convert value to " + str(kconfig.TYPE_TO_STR[sym.type])
+                )
                 if sym.type == kconfig.HEX:
-                    action.edit.add(entry.loc.uri, TextEdit(entry.value_range, hex(entry.value)))
+                    action.edit.add(
+                        entry.loc.uri, TextEdit(entry.value_range, hex(entry.value))
+                    )
                 else:
-                    action.edit.add(entry.loc.uri, TextEdit(entry.value_range, str(entry.value)))
+                    action.edit.add(
+                        entry.loc.uri, TextEdit(entry.value_range, str(entry.value))
+                    )
                 diag.add_action(action)
 
             file.diags.append(diag)
@@ -684,47 +736,59 @@ class KconfigContext:
 
         actions = []
         if user_value == sym.str_value:
-            if user_value == 'y':
+            if user_value == "y":
                 return
-            msg = f'CONFIG_{sym.name} was already disabled.'
+            msg = f"CONFIG_{sym.name} was already disabled."
             severity = Diagnostic.HINT
         elif len(sym.str_value):
-            msg = f'CONFIG_{sym.name} was assigned the value {entry.raw}, but got the value {sym.str_value}.'
+            msg = f"CONFIG_{sym.name} was assigned the value {entry.raw}, but got the value {sym.str_value}."
             severity = Diagnostic.WARNING
         else:
-            msg = f'CONFIG_{sym.name} couldn\'t be set.'
+            msg = f"CONFIG_{sym.name} couldn't be set."
             severity = Diagnostic.WARNING
 
         deps = _missing_deps(sym)
         if deps:
-            msg += ' Missing dependencies:\n'
-            msg += ' && '.join([kconfig.expr_str(dep) for dep in deps])
+            msg += " Missing dependencies:\n"
+            msg += " && ".join([kconfig.expr_str(dep) for dep in deps])
             edits = []
 
             for dep in deps:
                 if isinstance(dep, kconfig.Symbol) and dep.type == kconfig.BOOL:
-                    dep_entry = next((entry for entry in file.entries() if entry.name == dep.name),
-                                     None)
+                    dep_entry = next(
+                        (entry for entry in file.entries() if entry.name == dep.name),
+                        None,
+                    )
                     if dep_entry:
-                        edits.append({
-                            'dep': dep.name,
-                            'edit': TextEdit(dep_entry.value_range, 'y')
-                        })
+                        edits.append(
+                            {
+                                "dep": dep.name,
+                                "edit": TextEdit(dep_entry.value_range, "y"),
+                            }
+                        )
                     else:
-                        edits.append({
-                            'dep':
-                            dep.name,
-                            'edit':
-                            TextEdit(Range(entry.line_range.start, entry.line_range.start),
-                                     f'CONFIG_{dep.name}=y\n')
-                        })
+                        edits.append(
+                            {
+                                "dep": dep.name,
+                                "edit": TextEdit(
+                                    Range(
+                                        entry.line_range.start, entry.line_range.start
+                                    ),
+                                    f"CONFIG_{dep.name}=y\n",
+                                ),
+                            }
+                        )
 
             if len(edits) == 1:
-                action = CodeAction(f'Enable CONFIG_{edits[0]["dep"]} to resolve dependency')
-                action.edit.add(file.uri, edits[0]['edit'])
+                action = CodeAction(
+                    f'Enable CONFIG_{edits[0]["dep"]} to resolve dependency'
+                )
+                action.edit.add(file.uri, edits[0]["edit"])
                 actions.append(action)
             elif len(edits) > 1:
-                action = CodeAction(f'Enable {len(edits)} entries to resolve dependencies')
+                action = CodeAction(
+                    f"Enable {len(edits)} entries to resolve dependencies"
+                )
 
                 # Dependencies are registered with a "nearest first" approach in kconfig.
                 # As the nearest dependency is likely lowest in the menu hierarchy, we'll
@@ -732,7 +796,7 @@ class KconfigContext:
                 edits.reverse()
 
                 for edit in edits:
-                    action.edit.add(file.uri, edit['edit'])
+                    action.edit.add(file.uri, edit["edit"])
                 actions.append(action)
 
             actions.append(entry.remove())
@@ -749,8 +813,10 @@ class KconfigContext:
     def check_visibility(self, file: ConfFile, entry: ConfEntry, sym: kconfig.Symbol):
         """Check whether the configuration entry actually can be set in config files."""
         if not any(node.prompt for node in sym.nodes):
-            diag = Diagnostic.warn(f'Symbol CONFIG_{entry.name} cannot be set (has no prompt)',
-                                   entry.full_range)
+            diag = Diagnostic.warn(
+                f"Symbol CONFIG_{entry.name} cannot be set (has no prompt)",
+                entry.full_range,
+            )
             diag.add_action(entry.remove())
             file.diags.append(diag)
             return True
@@ -758,28 +824,31 @@ class KconfigContext:
     def check_defaults(self, file: ConfFile, entry: ConfEntry, sym: kconfig.Symbol):
         """Check whether an entry's value matches the default value, and mark it as redundant"""
         if sym._str_default() == sym.user_value:
-            diag = Diagnostic.hint(f'Value is {entry.raw} by default', entry.full_range)
+            diag = Diagnostic.hint(f"Value is {entry.raw} by default", entry.full_range)
             diag.mark_unnecessary()
-            diag.add_action(entry.remove('Remove redundant entry'))
+            diag.add_action(entry.remove("Remove redundant entry"))
             file.diags.append(diag)
             return True
 
-    def check_multiple_assignments(self, file: ConfFile, entry: ConfEntry,
-                                   all_entries: List[ConfEntry]):
+    def check_multiple_assignments(
+        self, file: ConfFile, entry: ConfEntry, all_entries: List[ConfEntry]
+    ):
         matching = [e for e in all_entries if e.name == entry.name]
         if len(matching) > 1 and matching[0] != entry:
             existing = matching[0]
             diag = Diagnostic.warn(
                 f'{entry.name} set more than once. Old value "{existing.value}", new value "{entry.value}".',
-                entry.full_range)
+                entry.full_range,
+            )
             diag.related_info = [
-                DiagnosticRelatedInfo(e.loc, f'Already set to "{e.value}" here') for e in matching
+                DiagnosticRelatedInfo(e.loc, f'Already set to "{e.value}" here')
+                for e in matching
                 if e != entry
             ]
             if existing.value == entry.value:
                 diag.mark_unnecessary()
                 diag.severity = Diagnostic.HINT
-                diag.add_action(entry.remove('Remove redundant entry'))
+                diag.add_action(entry.remove("Remove redundant entry"))
             file.diags.append(diag)
             return True
 
@@ -827,7 +896,7 @@ class KconfigContext:
             self.lint()
 
             for filename, diags in self._kconfig.diags.items():
-                if filename == '':
+                if filename == "":
                     self.cmd_diags.extend(diags)
                 else:
                     uri = Uri.file(filename)
@@ -838,12 +907,18 @@ class KconfigContext:
                         self.cmd_diags.extend(diags)
         except AttributeError as e:
             self.cmd_diags.append(
-                Diagnostic.err('Kconfig tree parse failed: Invalid attribute ' + str(e),
-                               Range(Position.start(), Position.start())))
+                Diagnostic.err(
+                    "Kconfig tree parse failed: Invalid attribute " + str(e),
+                    Range(Position.start(), Position.start()),
+                )
+            )
         except Exception as e:
             self.cmd_diags.append(
-                Diagnostic.err('Kconfig tree parse failed: ' + str(e),
-                               Range(Position.start(), Position.start())))
+                Diagnostic.err(
+                    "Kconfig tree parse failed: " + str(e),
+                    Range(Position.start(), Position.start()),
+                )
+            )
 
     def symbol_at(self, uri: Uri, pos):
         """Get the symbol referenced at a given position in a conf file."""
@@ -853,11 +928,11 @@ class KconfigContext:
 
         word = doc.word_at(pos)
         if word:
-            if re.match(r'Kconfig.*', uri.basename):
+            if re.match(r"Kconfig.*", uri.basename):
                 return self.get(word)
 
-            if word.startswith('CONFIG_'):
-                return self.get(word[len('CONFIG_'):])
+            if word.startswith("CONFIG_"):
+                return self.get(word[len("CONFIG_") :])
 
     def __repr__(self):
         return str(self.uri)
@@ -876,38 +951,44 @@ class KconfigServer(LSPServer):
 
         This will keep running until KconfigServer.running is false.
         """
-        super().__init__('zephyr-kconfig', VERSION, istream, ostream)
+        super().__init__("zephyr-kconfig", VERSION, istream, ostream)
         self.main_uri = None
         self.access_count = 0
         self.ctx: Dict[str, KconfigContext] = {}
-        self.dbg('Python version: ' + sys.version)
+        self.dbg("Python version: " + sys.version)
 
     def publish_diags(self, uri, diags: List[Diagnostic]):
         """Send a diagnostics publication notification"""
-        self.notify('textDocument/publishDiagnostics', {
-            'uri': uri,
-            'diagnostics': diags,
-        })
+        self.notify(
+            "textDocument/publishDiagnostics",
+            {
+                "uri": uri,
+                "diagnostics": diags,
+            },
+        )
 
     def refresh_ctx(self, ctx: KconfigContext):
         """Reparse the given Kconfig context, and publish diagsnostics"""
         ctx.clear_diags()
         if not ctx.valid:
-            self.dbg('Parsing...')
+            self.dbg("Parsing...")
             ctx.parse()
 
         if ctx.valid:
-            self.dbg('Load config...')
+            self.dbg("Load config...")
             ctx.load_config()
 
-            self.dbg('Done. {} diags, {} warnings'.format(
-                sum([len(file.diags) for file in ctx.all_conf_files]),
-                len(ctx._kconfig.warnings if ctx._kconfig else 0)))
+            self.dbg(
+                "Done. {} diags, {} warnings".format(
+                    sum([len(file.diags) for file in ctx.all_conf_files]),
+                    len(ctx._kconfig.warnings if ctx._kconfig else 0),
+                )
+            )
 
         for conf in ctx.all_conf_files:
             self.publish_diags(conf.uri, conf.diags)
 
-        self.publish_diags(Uri.file('command-line'), ctx.cmd_diags)
+        self.publish_diags(Uri.file("command-line"), ctx.cmd_diags)
 
         for uri, diags in ctx.kconfig_diags.items():
             self.publish_diags(uri, diags)
@@ -918,7 +999,7 @@ class KconfigServer(LSPServer):
 
         A context represents a single build directory.
         """
-        self.dbg(f'Creating context {uri}')
+        self.dbg(f"Creating context {uri}")
         ctx = KconfigContext(uri, root, conf_files, env)
 
         self.ctx[str(uri)] = ctx
@@ -939,7 +1020,7 @@ class KconfigServer(LSPServer):
         Keeps track of the currently referenced context, and will prefer
         this if it owns the given URI.
         """
-        is_conf_file = uri.basename.endswith('.conf')
+        is_conf_file = uri.basename.endswith(".conf")
 
         ctx = self.ctx.get(str(self.main_uri))
         if ctx:
@@ -970,49 +1051,49 @@ class KconfigServer(LSPServer):
         - textDocument.uri -> URI
         - position -> Position
         """
-        uri = Uri.parse(params['textDocument']['uri'])
+        uri = Uri.parse(params["textDocument"]["uri"])
         ctx = self.best_ctx(uri)
         if not ctx:
-            self.dbg('No context for {}'.format(uri.path))
+            self.dbg("No context for {}".format(uri.path))
             return
 
         if not ctx.valid:
             self.refresh_ctx(ctx)
 
-        return ctx.symbol_at(uri, Position.create(params['position']))
+        return ctx.symbol_at(uri, Position.create(params["position"]))
 
-    @handler('initialized')
+    @handler("initialized")
     def handle_initialized(self, params):
-        self.watch_files('**/Kconfig*')
-        self.watch_files('**/edt.pickle')
+        self.watch_files("**/Kconfig*")
+        self.watch_files("**/edt.pickle")
 
-    @handler('kconfig/addBuild')
+    @handler("kconfig/addBuild")
     def handle_add_build(self, params):
-        uri = Uri.parse(params['uri'])
+        uri = Uri.parse(params["uri"])
         if uri:
-            confFiles = [ConfFile(Uri.file(f)) for f in params['conf']]
-            ctx = self.create_ctx(uri, params['root'], confFiles, params['env'])
+            confFiles = [ConfFile(Uri.file(f)) for f in params["conf"]]
+            ctx = self.create_ctx(uri, params["root"], confFiles, params["env"])
 
             # This is the active build. Parse it right away:
             if uri == self.main_uri:
                 self.refresh_ctx(ctx)
-            return {'id': ctx.uri}
+            return {"id": ctx.uri}
 
-    @handler('kconfig/removeBuild')
+    @handler("kconfig/removeBuild")
     def handle_remove_build(self, params):
-        uri = Uri.parse(params['uri'])
+        uri = Uri.parse(params["uri"])
         if self.ctx.get(str(uri)):
             del self.ctx[str(uri)]
-            self.dbg('Deleted build ' + str(uri))
+            self.dbg("Deleted build " + str(uri))
 
-    @handler('kconfig/setMainBuild')
+    @handler("kconfig/setMainBuild")
     def handle_set_build(self, params):
-        uri = Uri.parse(params['uri'])
+        uri = Uri.parse(params["uri"])
         self.main_uri = uri
         ctx = self.ctx.get(str(self.main_uri))
         if ctx:
-            self.dbg(f'Main build: {uri}')
-            self.dbg('\t' + "\n\t".join([str(f) for f in ctx.conf_files]))
+            self.dbg(f"Main build: {uri}")
+            self.dbg("\t" + "\n\t".join([str(f) for f in ctx.conf_files]))
             self.refresh_ctx(ctx)
 
     def get_ctx(self, id):
@@ -1023,58 +1104,58 @@ class KconfigServer(LSPServer):
             return self.ctx.get(str(self.main_uri))
         return self.last_ctx
 
-    @handler('kconfig/search')
+    @handler("kconfig/search")
     def handle_search(self, params):
-        ctx = self.get_ctx(params.get('ctx'))
+        ctx = self.get_ctx(params.get("ctx"))
         if not ctx:
             return
 
         return {
-            'ctx': str(ctx.uri),
-            'query': params['query'],
-            'symbols': ctx.symbol_search(params['query']),
+            "ctx": str(ctx.uri),
+            "query": params["query"],
+            "symbols": ctx.symbol_search(params["query"]),
         }
 
-    @handler('textDocument/didChange')
+    @handler("textDocument/didChange")
     def handle_change(self, params):
         super().handle_change(params)
         if self.last_ctx:
             self.refresh_ctx(self.last_ctx)
 
-    @handler('kconfig/getMenu')
+    @handler("kconfig/getMenu")
     def handle_get_menu(self, params):
-        ctx = self.get_ctx(params.get('ctx'))
+        ctx = self.get_ctx(params.get("ctx"))
         if not ctx:
             return
 
         if not ctx.valid:
             self.refresh_ctx(ctx)
 
-        show_all = 'options' in params and params['options'].get('showAll')
+        show_all = "options" in params and params["options"].get("showAll")
 
-        return ctx.get_menu(params.get('id'), show_all)
+        return ctx.get_menu(params.get("id"), show_all)
 
-    @handler('kconfig/setVal')
+    @handler("kconfig/setVal")
     def handle_setval(self, params):
-        ctx = self.get_ctx(params.get('ctx'))
+        ctx = self.get_ctx(params.get("ctx"))
         if not ctx:
             return
 
-        if 'val' in params:
-            ctx.set(params['name'], params['val'])
+        if "val" in params:
+            ctx.set(params["name"], params["val"])
         else:
-            ctx.unset(params['name'])
+            ctx.unset(params["name"])
 
     # @handler('kconfig/getEntry')
     # def handle_getentry(self, params):
     #     pass # TODO: Should get the "help" page for the entry
 
-    @handler('textDocument/completion')
+    @handler("textDocument/completion")
     def handle_completion(self, params):
-        uri = Uri.parse(params['textDocument']['uri'])
+        uri = Uri.parse(params["textDocument"]["uri"])
         ctx = self.best_ctx(uri)
         if not ctx:
-            self.dbg('No context for {}'.format(uri.path))
+            self.dbg("No context for {}".format(uri.path))
             return
 
         if not ctx.valid:
@@ -1084,22 +1165,22 @@ class KconfigServer(LSPServer):
 
         doc = documentStore.get(uri)
         if not doc:
-            self.dbg('Unknown document')
+            self.dbg("Unknown document")
             return
 
-        pos = Position.create(params['position'])
+        pos = Position.create(params["position"])
         line = doc.line(pos.line)
         show_non_visible = False
         if line:
-            prefix = line[:pos.character]
+            prefix = line[: pos.character]
             word = prefix.lstrip()
 
             if len(word) > 0:
                 # Ensure word starts with 'CONFIG_'. By using commonprefix, we can also detect and correct
                 # partial matches:
-                common = os.path.commonprefix([word, 'CONFIG_'])
-                if len(common) < len('CONFIG_'):
-                    word = 'CONFIG_' + word[len(common):]
+                common = os.path.commonprefix([word, "CONFIG_"])
+                if len(common) < len("CONFIG_"):
+                    word = "CONFIG_" + word[len(common) :]
                 else:
                     show_non_visible = True
 
@@ -1107,9 +1188,9 @@ class KconfigServer(LSPServer):
             word = None
 
         def insert_text(sym: kconfig.Symbol):
-            insert = Snippet('CONFIG_')
+            insert = Snippet("CONFIG_")
             insert.add_text(sym.name)
-            insert.add_text('=')
+            insert.add_text("=")
             if sym.type in [kconfig.BOOL, kconfig.TRISTATE]:
                 choices = [kconfig.TRI_TO_STR[val] for val in list(sym.assignable)]
                 choices.reverse()  # sym.assignable shows 'n' first, but user normally wants 'y'
@@ -1119,85 +1200,91 @@ class KconfigServer(LSPServer):
                 insert.add_tabstop()
                 insert.add_text('"')
             elif sym.type == kconfig.HEX:
-                insert.add_text('0x')
+                insert.add_text("0x")
             else:
                 pass  # freeform value
 
             return insert.text
 
-        items = [{
-            'label':
-            'CONFIG_' + sym.name,
-            'kind':
-            CompletionItemKind.VARIABLE,
-            'detail':
-            kconfig.TYPE_TO_STR[sym.type],
-            'documentation':
-            next((n.help.replace('\n', ' ') for n in sym.nodes if n.help), ' '),
-            'insertText':
-            insert_text(sym),
-            'insertTextFormat':
-            InsertTextFormat.SNIPPET
-        } for sym in ctx.symbols(word) if sym.visibility or show_non_visible
-                 ]  # Only show visible symbols on completion without a prefix
+        items = [
+            {
+                "label": "CONFIG_" + sym.name,
+                "kind": CompletionItemKind.VARIABLE,
+                "detail": kconfig.TYPE_TO_STR[sym.type],
+                "documentation": next(
+                    (n.help.replace("\n", " ") for n in sym.nodes if n.help), " "
+                ),
+                "insertText": insert_text(sym),
+                "insertTextFormat": InsertTextFormat.SNIPPET,
+            }
+            for sym in ctx.symbols(word)
+            if sym.visibility or show_non_visible
+        ]  # Only show visible symbols on completion without a prefix
 
-        self.dbg('Filter: "{}" Total symbols: {} Results: {}'.format(word,
-                                                                     len(ctx._kconfig.syms.items()),
-                                                                     len(items)))
+        self.dbg(
+            'Filter: "{}" Total symbols: {} Results: {}'.format(
+                word, len(ctx._kconfig.syms.items()), len(items)
+            )
+        )
         # When performing a completion request without any prefix, we'll only show the visible symbols.
         # Since we want to start showing users non-visible symbols when they start typing, we need
         # to mark the non-prefixed completion list incomplete to make the client re-requests a new list
-        return {'isIncomplete': not show_non_visible, 'items': items}
+        return {"isIncomplete": not show_non_visible, "items": items}
 
-    @handler('textDocument/definition')
+    @handler("textDocument/definition")
     def handle_definition(self, params):
         sym = self.get_sym(params)
         if sym:
             return _loc(sym)
 
-    @handler('textDocument/hover')
+    @handler("textDocument/hover")
     def handle_hover(self, params):
-        uri = Uri.parse(params['textDocument']['uri'])
+        uri = Uri.parse(params["textDocument"]["uri"])
         ctx = self.best_ctx(uri)
         if not ctx:
-            self.dbg('No context for {}'.format(uri.path))
+            self.dbg("No context for {}".format(uri.path))
             return
 
         if not ctx.valid:
             self.refresh_ctx(ctx)
 
-        sym = ctx.symbol_at(uri, Position.create(params['position']))
+        sym = ctx.symbol_at(uri, Position.create(params["position"]))
         if not sym:
             return
 
-        contents = MarkupContent('')
+        contents = MarkupContent("")
 
         prompt = _prompt(sym, True)
         if prompt:
             contents.add_text(prompt)
 
         contents.paragraph()
-        contents.add_markdown('Type: `{}`'.format(kconfig.TYPE_TO_STR[sym.type]))
+        contents.add_markdown("Type: `{}`".format(kconfig.TYPE_TO_STR[sym.type]))
         if len(sym.str_value) > 0:
             contents.linebreak()
-            contents.add_markdown('Value: `{}`'.format(sym.str_value))
+            contents.add_markdown("Value: `{}`".format(sym.str_value))
         contents.paragraph()
 
-        help = '\n\n'.join([n.help.replace('\n', ' ') for n in sym.nodes if n.help])
+        help = "\n\n".join([n.help.replace("\n", " ") for n in sym.nodes if n.help])
         if help:
             contents.add_text(help)
 
-        if not uri.basename.endswith('.conf') and len(ctx.conf_files) != 0:
+        if not uri.basename.endswith(".conf") and len(ctx.conf_files) != 0:
             contents.paragraph()
-            contents.add_markdown('_Kconfig environment: [{}]({})_'.format(
-                os.path.relpath(ctx.uri.path, os.path.join(ctx.uri.path, '..', '..')),
-                ctx.conf_files[0].uri))
+            contents.add_markdown(
+                "_Kconfig environment: [{}]({})_".format(
+                    os.path.relpath(
+                        ctx.uri.path, os.path.join(ctx.uri.path, "..", "..")
+                    ),
+                    ctx.conf_files[0].uri,
+                )
+            )
 
-        return {'contents': contents}
+        return {"contents": contents}
 
-    @handler('textDocument/documentSymbol')
+    @handler("textDocument/documentSymbol")
     def handle_doc_symbols(self, params):
-        uri = Uri.parse(params['textDocument']['uri'])
+        uri = Uri.parse(params["textDocument"]["uri"])
         ctx = self.best_ctx(uri)
         if not ctx:
             return
@@ -1212,29 +1299,35 @@ class KconfigServer(LSPServer):
                 prompt = _prompt(sym, True)
             else:
                 prompt = None
-            return DocumentSymbol('CONFIG_' + e.name, SymbolKind.PROPERTY, e.full_range, prompt)
+            return DocumentSymbol(
+                "CONFIG_" + e.name, SymbolKind.PROPERTY, e.full_range, prompt
+            )
 
         return [doc_sym(e) for e in file.entries()]
 
-    @handler('workspace/symbol')
+    @handler("workspace/symbol")
     def handle_workspace_symbols(self, params):
-        query = params['query']
+        query = params["query"]
         ctx = self.last_ctx
         if not ctx or not ctx.valid:
             return
 
         def sym_info(sym: kconfig.Symbol):
-            return SymbolInformation('CONFIG_' + sym.name, SymbolKind.PROPERTY,
-                                     _loc(sym)[0], _prompt(sym, True))
+            return SymbolInformation(
+                "CONFIG_" + sym.name,
+                SymbolKind.PROPERTY,
+                _loc(sym)[0],
+                _prompt(sym, True),
+            )
 
         return [sym_info(s) for s in ctx.symbols(query) if len(s.nodes)]
 
-    @handler('textDocument/codeAction')
+    @handler("textDocument/codeAction")
     def handle_code_action(self, params):
-        uri = Uri.parse(params['textDocument']['uri'])
+        uri = Uri.parse(params["textDocument"]["uri"])
         ctx = self.best_ctx(uri)
         if not ctx:
-            self.dbg('No context for {}'.format(uri.path))
+            self.dbg("No context for {}".format(uri.path))
             return
 
         if not ctx.valid:
@@ -1242,10 +1335,10 @@ class KconfigServer(LSPServer):
 
         conf = ctx.conf_file(uri)
         if not conf:
-            self.dbg('No conf file for {}'.format(uri.path))
+            self.dbg("No conf file for {}".format(uri.path))
             return
 
-        range: Range = Range.create(params['range'])
+        range: Range = Range.create(params["range"])
         actions = []
         for diag in conf.diags:
             if range.overlaps(diag.range):
@@ -1254,20 +1347,23 @@ class KconfigServer(LSPServer):
         return actions
 
     def on_file_change(self, uri: Uri, kind: FileChangeKind):
-        if uri.basename.startswith('Kconfig'):
+        if uri.basename.startswith("Kconfig"):
             for ctx in self.ctx.values():
                 ctx.invalidate()
-                self.dbg(f'Invalidated context because of change in {uri}')
-        elif uri.basename == 'edt.pickle':
+                self.dbg(f"Invalidated context because of change in {uri}")
+        elif uri.basename == "edt.pickle":
             # When the DTS context for this context changes, it should be invalidated:
-            changedCtx = self.ctx.get(str(Uri.file(uri.path.replace('/zephyr/edt.pickle', ''))))
+            changedCtx = self.ctx.get(
+                str(Uri.file(uri.path.replace("/zephyr/edt.pickle", "")))
+            )
             if changedCtx:
                 changedCtx.invalidate()
-                self.dbg(f'Invalidated {changedCtx} due to dts changes.')
+                self.dbg(f"Invalidated {changedCtx} due to dts changes.")
 
 
 def wait_for_debugger():
     import debugpy
+
     # 5678 is the default attach port in the VS Code debug configurations.
     debugpy.listen(5678)
     debugpy.wait_for_client()
@@ -1276,14 +1372,14 @@ def wait_for_debugger():
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--debug',
-        action='store_true',
-        help='Enable debug mode. Will wait for a debugger to attach before starting the server.')
+        "--debug",
+        action="store_true",
+        help="Enable debug mode. Will wait for a debugger to attach before starting the server.",
+    )
     parser.add_argument(
-        '--log',
-        action='store_true',
-        help=
-        'Enable logging. Will write debug logs to an lsp.log file in the current working directory.'
+        "--log",
+        action="store_true",
+        help="Enable logging. Will write debug logs to an lsp.log file in the current working directory.",
     )
     return parser.parse_args()
 

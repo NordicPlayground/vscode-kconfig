@@ -27,8 +27,7 @@ jobs:
       - script: python -m mypy --junit-xml out/test-mypy.xml --config-file srv/.mypy.ini
         displayName: Run mypy
 
-      - script: yapf -i --recursive --exclude srv/kconfiglib.py srv
-        # Exclude kconfiglib.py as that is third-party code
+      - script: black --check srv
         displayName: Run formatter
 
       - script: pytest srv --junitxml=out/test-pytest.xml --cov=srv --cov-report=xml --cov-config=srv/.coveragerc

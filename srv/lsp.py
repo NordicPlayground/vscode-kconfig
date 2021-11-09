@@ -7,6 +7,7 @@ import re
 import enum
 from typing import Any, Callable, Optional, List, Dict
 from rpc import RPCServer, RPCResponse, handler
+
 """
 Language Server implementation.
 
@@ -28,12 +29,15 @@ class Uri:
             |           |            |            |        |
         scheme     authority       path        query   fragment
     """
-    def __init__(self,
-                 scheme: str,
-                 authority: str = '',
-                 path: str = '',
-                 query: str = '',
-                 fragment: str = ''):
+
+    def __init__(
+        self,
+        scheme: str,
+        authority: str = "",
+        path: str = "",
+        query: str = "",
+        fragment: str = "",
+    ):
         """
         Instantiate a new URI.
 
@@ -50,31 +54,32 @@ class Uri:
         fragment: str
             Fragment of the URI, i.e. the part after #
         """
-        self.scheme = scheme or ''
-        self.authority = authority or ''
-        path = re.sub(r'^/(\w:/)', r'\1', path)
-        self.path = path or ''
-        self.query = query or ''
-        self.fragment = fragment or ''
+        self.scheme = scheme or ""
+        self.authority = authority or ""
+        path = re.sub(r"^/(\w:/)", r"\1", path)
+        self.path = path or ""
+        self.query = query or ""
+        self.fragment = fragment or ""
 
     def escape(self, text):
         def escape_char(c):
             if c in "!#$&'()*+,\\:;=?@[]":
-                return '%{:02X}'.format(ord(c))
+                return "%{:02X}".format(ord(c))
             return c
 
-        return ''.join([escape_char(c) for c in text])
+        return "".join([escape_char(c) for c in text])
 
     def __repr__(self):
         path = self.path
-        if not path.startswith('/'):
-            path = '/' + path
-        uri = '{}://{}{}'.format(
-            *[self.escape(part) for part in [self.scheme, self.authority, path]])
+        if not path.startswith("/"):
+            path = "/" + path
+        uri = "{}://{}{}".format(
+            *[self.escape(part) for part in [self.scheme, self.authority, path]]
+        )
         if self.query:
-            uri += '?' + self.query
+            uri += "?" + self.query
         if self.fragment:
-            uri += '#' + self.fragment
+            uri += "#" + self.fragment
         return uri
 
     def __str__(self):
@@ -95,11 +100,14 @@ class Uri:
     @staticmethod
     def parse(raw: str):
         """Parse a URI from a raw string"""
+
         def sanitize(part):
             if part:
-                return re.sub(r'%([\da-fA-F]{2})', lambda x: chr(int(x.group(1), 16)), part)
+                return re.sub(
+                    r"%([\da-fA-F]{2})", lambda x: chr(int(x.group(1), 16)), part
+                )
             else:
-                return ''
+                return ""
 
         if not isinstance(raw, str):
             return NotImplemented
@@ -107,17 +115,19 @@ class Uri:
         sanitized = sanitize(raw)
 
         # Convert windows paths:
-        if re.match(r'\w:\\', sanitized):
-            sanitized = 'file:///' + sanitized.replace('\\', '/')
+        if re.match(r"\w:\\", sanitized):
+            sanitized = "file:///" + sanitized.replace("\\", "/")
 
-        match = re.match(r'(.*?):(?://([^?\s/#]*))?(/[^?\s]*)?(?:\?([^#]+))?(?:#(.+))?', sanitized)
+        match = re.match(
+            r"(.*?):(?://([^?\s/#]*))?(/[^?\s]*)?(?:\?([^#]+))?(?:#(.+))?", sanitized
+        )
         if match:
             return Uri(*list(match.groups()))
 
     @staticmethod
     def file(path: str):
         """Convert a file path to a URI"""
-        return Uri('file', '', path.replace('\\', '/'))
+        return Uri("file", "", path.replace("\\", "/"))
 
     def to_dict(self):
         return str(self)
@@ -127,6 +137,7 @@ class WorkspaceFolder:
     """
     Workspace folder representation.
     """
+
     def __init__(self, uri: Uri, name: str):
         self.uri = uri
         self.name = name
@@ -163,8 +174,9 @@ class Position:
         """
         if not isinstance(other, Position):
             return NotImplemented
-        return (self.line < other.line) or (self.line == other.line
-                                            and self.character < other.character)
+        return (self.line < other.line) or (
+            self.line == other.line and self.character < other.character
+        )
 
     def after(self, other):
         """
@@ -177,8 +189,9 @@ class Position:
         """
         if not isinstance(other, Position):
             return NotImplemented
-        return (self.line > other.line) or (self.line == other.line
-                                            and self.character > other.character)
+        return (self.line > other.line) or (
+            self.line == other.line and self.character > other.character
+        )
 
     def __eq__(self, other):
         if not isinstance(other, Position):
@@ -186,12 +199,12 @@ class Position:
         return self.line == other.line and self.character == other.character
 
     def __repr__(self):
-        return '{}:{}'.format(self.line + 1, self.character)
+        return "{}:{}".format(self.line + 1, self.character)
 
     @staticmethod
     def create(obj):
         """Create position from a serialized object."""
-        return Position(obj['line'], obj['character'])
+        return Position(obj["line"], obj["character"])
 
     @staticmethod
     def start():
@@ -228,13 +241,17 @@ class Range:
         """Create a range that includes both ranges a and b."""
         if not isinstance(a, Range) or not isinstance(b, Range):
             return NotImplemented
-        return Range(a.start if a.start.before(b.start) else b.start,
-                     b.end if a.end.before(b.end) else b.end)
+        return Range(
+            a.start if a.start.before(b.start) else b.start,
+            b.end if a.end.before(b.end) else b.end,
+        )
 
     def contains(self, pos_or_range):
         """Check whether this range fully contains the other Range or Position"""
         if isinstance(pos_or_range, Position):
-            return (not pos_or_range.before(self.start)) and (not self.end.before(pos_or_range))
+            return (not pos_or_range.before(self.start)) and (
+                not self.end.before(pos_or_range)
+            )
         if isinstance(pos_or_range, Range):
             return self.contains(pos_or_range.start) and self.contains(pos_or_range.end)
         return NotImplemented
@@ -252,12 +269,12 @@ class Range:
         return self.start == other.start and self.end == other.end
 
     def __repr__(self):
-        return '{} - {}'.format(self.start, self.end)
+        return "{} - {}".format(self.start, self.end)
 
     @staticmethod
     def create(obj):
         """Create a range from a serialized object."""
-        return Range(Position.create(obj['start']), Position.create(obj['end']))
+        return Range(Position.create(obj["start"]), Position.create(obj["end"]))
 
 
 class Location:
@@ -266,12 +283,13 @@ class Location:
 
     A location object represents a unique text range in a resource in a workspace.
     """
+
     def __init__(self, uri: Uri, range: Range):
         self.uri = uri
         self.range = range
 
     def __repr__(self):
-        return '{}: {}'.format(self.uri, self.range)
+        return "{}: {}".format(self.uri, self.range)
 
     def __eq__(self, other):
         if not isinstance(other, Location):
@@ -281,7 +299,7 @@ class Location:
     @staticmethod
     def create(obj):
         """Create a location from a serialized object."""
-        return Location(Uri.parse(obj['uri']), Range.create(obj['range']))
+        return Location(Uri.parse(obj["uri"]), Range.create(obj["range"]))
 
 
 class TextDocument:
@@ -296,7 +314,9 @@ class TextDocument:
 
     UNKNOWN_VERSION = -1
 
-    def __init__(self, uri: Uri, text: str = None, languageId: str = None, version: int = None):
+    def __init__(
+        self, uri: Uri, text: str = None, languageId: str = None, version: int = None
+    ):
         """
         Create a text document.
 
@@ -322,13 +342,13 @@ class TextDocument:
         self._mode = None
         self._scanpos = 0
         self.lines: List[str] = []
-        self._cbs: List[Callable[['TextDocument'], Any]] = []
-        self._virtual = self.uri.scheme != 'file'
+        self._cbs: List[Callable[["TextDocument"], Any]] = []
+        self._virtual = self.uri.scheme != "file"
         self.loaded = False
         if text:
             self._set_text(text)
 
-    def on_change(self, cb: Callable[['TextDocument'], Any]):
+    def on_change(self, cb: Callable[["TextDocument"], Any]):
         """
         Register a callback to be called each time the document is changed.
 
@@ -349,7 +369,7 @@ class TextDocument:
     @property
     def text(self):
         """Full contents of the document, using newline as a line separator."""
-        return '\n'.join(self.lines) + '\n'
+        return "\n".join(self.lines) + "\n"
 
     def line(self, index):
         """Get the contents of a line in the document. Does not include the line separator."""
@@ -364,7 +384,7 @@ class TextDocument:
         if pos.line >= len(self.lines):
             return len(self.text)
         character = min(len(self.lines[pos.line]) + 1, pos.character)
-        return len(''.join([l + '\n' for l in self.lines[:pos.line]])) + character
+        return len("".join([l + "\n" for l in self.lines[: pos.line]])) + character
 
     def pos(self, offset: int):
         """Get the Position at the given content offset."""
@@ -378,10 +398,14 @@ class TextDocument:
         """Get the text in the given range."""
         if not range:
             return self.text
-        text = self.text[self.offset(range.start):self.offset(range.end)]
+        text = self.text[self.offset(range.start) : self.offset(range.end)]
 
         # Trim trailing newline if the range doesn't end on the next line:
-        if text.endswith('\n') and range.end.character != 0 and range.end.line < len(self.lines):
+        if (
+            text.endswith("\n")
+            and range.end.character != 0
+            and range.end.line < len(self.lines)
+        ):
             return text[:-1]
         return text
 
@@ -392,8 +416,8 @@ class TextDocument:
         """
         line = self.line(pos.line)
         if line:
-            before = re.match(r'.*?(\w*)$', line[:pos.character])
-            after = re.match(r'^\w*', line[pos.character:])
+            before = re.match(r".*?(\w*)$", line[: pos.character])
+            after = re.match(r"^\w*", line[pos.character :])
             if before and after:
                 return before[1] + after[0]
 
@@ -410,8 +434,11 @@ class TextDocument:
         """
         # Ignore range if the file is empty:
         if range and len(self.lines) > 0:
-            self._set_text(self.text[:self.offset(range.start)] + text +
-                           self.text[self.offset(range.end):])
+            self._set_text(
+                self.text[: self.offset(range.start)]
+                + text
+                + self.text[self.offset(range.end) :]
+            )
         else:
             self._set_text(text)
         self.modified = True
@@ -419,7 +446,7 @@ class TextDocument:
     def _write_to_disk(self):
         """Internal: Store the file on disk. The document's must use the `file` scheme."""
         if not self._virtual:
-            with open(self.uri.path, 'w') as f:
+            with open(self.uri.path, "w") as f:
                 f.write(self.text)
             self.modified = False
             self.version = TextDocument.UNKNOWN_VERSION
@@ -427,10 +454,10 @@ class TextDocument:
     def _read_from_disk(self):
         """Internal: Restore the document from disk. The document's must use the `file` scheme."""
         # will raise environment error if the file doesn't exist. This has to be caught outside:
-        with open(self.uri.path, 'r') as f:
+        with open(self.uri.path, "r") as f:
             text = f.read()
         if text == None:
-            raise IOError('Unable to read from file {}'.format(self.uri.path))
+            raise IOError("Unable to read from file {}".format(self.uri.path))
 
         self._set_text(text)
         self.modified = False
@@ -439,7 +466,7 @@ class TextDocument:
     @staticmethod
     def from_disk(uri: Uri):
         """Create a TextDocument by reading its contents from disk."""
-        with open(uri.path, 'r') as f:
+        with open(uri.path, "r") as f:
             doc = TextDocument(uri, f.read())
         return doc
 
@@ -459,6 +486,7 @@ class TextDocument:
         Iterator allowing users to go through the lines in the document
         in a loop.
         """
+
         def __init__(self, doc):
             self._linenr = 0
             self._lines = doc.lines
@@ -473,13 +501,13 @@ class TextDocument:
     def __iter__(self):
         return TextDocument.LineIterator(self)
 
-    def open(self, mode='r'):
+    def open(self, mode="r"):
         """Open the document like a stream."""
-        if not mode in ['w', 'a', 'r']:
-            raise IOError('Unknown mode ' + str(mode))
+        if not mode in ["w", "a", "r"]:
+            raise IOError("Unknown mode " + str(mode))
 
-        if mode == 'w':
-            self._set_text('')
+        if mode == "w":
+            self._set_text("")
             self.modified = True
             self.version = TextDocument.UNKNOWN_VERSION
         elif not self.loaded:
@@ -490,19 +518,19 @@ class TextDocument:
 
     def close(self):
         """Close the document stream."""
-        if self._mode in ['a', 'w'] and self.modified:
+        if self._mode in ["a", "w"] and self.modified:
             self._write_to_disk()
         self._mode = None
 
     def write(self, text: str):
         """Write to the document stream."""
-        if not self._mode in ['a', 'w']:
-            raise IOError('Invalid mode for writing: ' + str(self._mode))
+        if not self._mode in ["a", "w"]:
+            raise IOError("Invalid mode for writing: " + str(self._mode))
         if not self.loaded:
-            raise IOError('File not loaded in RAM: {}'.format(self.uri.path))
+            raise IOError("File not loaded in RAM: {}".format(self.uri.path))
 
         self._set_text(self.text + text)
-        if self._mode == 'a':
+        if self._mode == "a":
             self._scanpos = len(self.text)
         self.modified = True
         self.version = TextDocument.UNKNOWN_VERSION
@@ -514,28 +542,28 @@ class TextDocument:
 
     def read(self, length=None):
         """Read from the document stream."""
-        if self._mode != 'r':
-            raise IOError('Invalid mode for reading: ' + str(self._mode))
+        if self._mode != "r":
+            raise IOError("Invalid mode for reading: " + str(self._mode))
 
         if self._scanpos >= len(self.text):
-            return ''
+            return ""
 
         if length == None:
-            out = self.text[self._scanpos:]
+            out = self.text[self._scanpos :]
             self._scanpos = len(self.text)
         else:
-            out = self.text[self._scanpos:self._scanpos + length]
+            out = self.text[self._scanpos : self._scanpos + length]
             self._scanpos += length
         return out
 
     def readline(self, size=None):
         """Read a line from the document stream."""
-        if self._mode != 'r':
-            raise IOError('Invalid mode for reading: ' + str(self._mode))
+        if self._mode != "r":
+            raise IOError("Invalid mode for reading: " + str(self._mode))
 
         if self._scanpos >= len(self.text):
-            return ''
-        out = self.text[self._scanpos:].splitlines(True)[0]
+            return ""
+        out = self.text[self._scanpos :].splitlines(True)[0]
         if size != None:
             out = out[:size]
         self._scanpos += len(out)
@@ -543,12 +571,12 @@ class TextDocument:
 
     def readlines(self, _=None):
         """Read lines from the document stream."""
-        if self._mode != 'r':
-            raise IOError('Invalid mode for reading: ' + str(self._mode))
+        if self._mode != "r":
+            raise IOError("Invalid mode for reading: " + str(self._mode))
 
         if self._scanpos >= len(self.text):
             return []
-        out = self.text[self._scanpos:].splitlines()
+        out = self.text[self._scanpos :].splitlines()
         self._scanpos = len(self.text)
         return out
 
@@ -558,7 +586,7 @@ class TextDocument:
     def seek(self, offset):
         """Move the document stream"""
         if self._mode == None:
-            raise IOError('Cannot seek on closed file')
+            raise IOError("Cannot seek on closed file")
         self._scanpos = offset
 
     def tell(self):
@@ -567,8 +595,8 @@ class TextDocument:
 
     def next(self):
         """Get the next line in the stream"""
-        if self._mode != 'r':
-            raise IOError('Invalid mode for reading: ' + str(self._mode))
+        if self._mode != "r":
+            raise IOError("Invalid mode for reading: " + str(self._mode))
         if self._scanpos >= len(self.text):
             raise StopIteration
         return self.readline()
@@ -581,6 +609,7 @@ class DocProvider:
     Can be extended and registered in the DocumentStore to provide contents for URIs
     that don't represent on-disk documents, such as webpages or virtual documents.
     """
+
     def __init__(self, scheme: str):
         """
         Create a new DocProvider.
@@ -609,6 +638,7 @@ class DocumentStore:
 
     The DocumentStore is instantiated as a singleton, which is referenced from the LSPServer.
     """
+
     def __init__(self):
         self.docs: Dict[str, TextDocument] = {}
         self._providers: Dict[str, DocProvider] = {}
@@ -659,7 +689,7 @@ class DocumentStore:
 
     def _from_disk(self, uri: Uri):
         # will raise environment error if the file doesn't exist. This has to be caught outside
-        with open(uri.path, 'r') as f:
+        with open(uri.path, "r") as f:
             text = f.read()
         if text == None:
             return None
@@ -670,6 +700,7 @@ class DocumentStore:
 
 class CompletionItemKind(enum.IntEnum):
     """Completion item kinds, as defined by the LSP specification."""
+
     TEXT = 1
     METHOD = 2
     FUNCTION = 3
@@ -699,6 +730,7 @@ class CompletionItemKind(enum.IntEnum):
 
 class SymbolKind(enum.IntEnum):
     """Symbol kinds, as defined by the LSP specification"""
+
     FILE = 1
     MODULE = 2
     NAMESPACE = 3
@@ -729,12 +761,14 @@ class SymbolKind(enum.IntEnum):
 
 class InsertTextFormat(enum.IntEnum):
     """Text format, as defined by the LSP specification."""
+
     PLAINTEXT = 1
     SNIPPET = 2
 
 
 class DiagnosticRelatedInfo:
     """Additional information attached to a Diagnostic item."""
+
     def __init__(self, loc: Location, message: str):
         self.location = loc
         self.message = message
@@ -749,6 +783,7 @@ class TextEdit:
     TextEdits are normally included in a larger WorkspaceEdit that defines the URI
     the TextEdit should be applied to.
     """
+
     def __init__(self, range: Range, new_text: str):
         self.range = range
         self.newText = new_text
@@ -756,7 +791,7 @@ class TextEdit:
     @staticmethod
     def remove(range: Range):
         """Create a TextEdit that just removes the text in the given range."""
-        return TextEdit(range, '')
+        return TextEdit(range, "")
 
 
 class WorkspaceEdit:
@@ -765,6 +800,7 @@ class WorkspaceEdit:
 
     A workspace edit is a collection of TextEdits applied to TextDocuments at various URIs.
     """
+
     def __init__(self):
         self.changes = {}
 
@@ -782,14 +818,15 @@ class WorkspaceEdit:
 
 class CodeActionKind(enum.Enum):
     """Kinds of CodeActions, as defined by the LSP specification."""
-    QUICKFIX = 'quickfix'
-    REFACTOR = 'refactor'
-    REFACTOREXTRACT = 'refactor.extract'
-    REFACTORINLINE = 'refactor.inline'
-    REFACTORREWRITE = 'refactor.rewrite'
-    SOURCE = 'source'
-    SOURCEORGANIZEIMPORTS = 'source.organizeImports'
-    SOURCEFIXALL = 'source.fixAll'
+
+    QUICKFIX = "quickfix"
+    REFACTOR = "refactor"
+    REFACTOREXTRACT = "refactor.extract"
+    REFACTORINLINE = "refactor.inline"
+    REFACTORREWRITE = "refactor.rewrite"
+    SOURCE = "source"
+    SOURCEORGANIZEIMPORTS = "source.organizeImports"
+    SOURCEFIXALL = "source.fixAll"
 
 
 class CodeAction:
@@ -798,6 +835,7 @@ class CodeAction:
     CodeActions typically appear in the editor as a small icon next to errors and warnings,
     allowing them to quickly resolve trivial mistakes, such as typos or missing statements.
     """
+
     def __init__(self, title: str, kind: CodeActionKind = CodeActionKind.QUICKFIX):
         """
         Create a new CodeAction.
@@ -819,17 +857,17 @@ class CodeAction:
 
     def to_dict(self):
         result = {
-            'title': self.title,
-            'kind': self.kind.value,
+            "title": self.title,
+            "kind": self.kind.value,
         }
         if self.command:
-            result['command'] = self.command,
+            result["command"] = (self.command,)
         if self.data:
-            result['data'] = self.data
+            result["data"] = self.data
         if len(self.diagnostics) > 0:
-            result['diagnostics'] = self.diagnostics
+            result["diagnostics"] = self.diagnostics
         if self.edit.has_changes():
-            result['edit'] = self.edit
+            result["edit"] = self.edit
         return result
 
 
@@ -837,6 +875,7 @@ class Diagnostic:
     """
     Diagnostic message that appears in the UI as an error, a warning, some information or a hint.
     """
+
     ERROR = 1
     WARNING = 2
     INFORMATION = 3
@@ -844,6 +883,7 @@ class Diagnostic:
 
     class Tag(enum.IntEnum):
         """Diagnostic tag that can be added to Diagnostic.tags."""
+
         UNNECESSARY = 1
         DEPRECATED = 2
 
@@ -871,17 +911,19 @@ class Diagnostic:
 
     @staticmethod
     def severity_str(severity):
-        return ['Unknown', 'Error', 'Information', 'Hint'][severity]
+        return ["Unknown", "Error", "Information", "Hint"][severity]
 
     def __str__(self) -> str:
-        return '{}: {}: {}'.format(self.range, Diagnostic.severity_str(self.severity), self.message)
+        return "{}: {}: {}".format(
+            self.range, Diagnostic.severity_str(self.severity), self.message
+        )
 
     def to_dict(self):
         obj = {"message": self.message, "range": self.range, "severity": self.severity}
         if len(self.tags):
-            obj['tags'] = self.tags
+            obj["tags"] = self.tags
         if len(self.related_info):
-            obj['relatedInformation'] = [info.__dict__ for info in self.related_info]
+            obj["relatedInformation"] = [info.__dict__ for info in self.related_info]
 
         return obj
 
@@ -914,7 +956,8 @@ class DocumentSymbol:
     Document symbols represent a single language construct, like a variable, a function or a symbol.
     Document symbols show up in the breadcrumbs view and can be searched for by the user.
     """
-    def __init__(self, name: str, kind: SymbolKind, range: Range, detail=''):
+
+    def __init__(self, name: str, kind: SymbolKind, range: Range, detail=""):
         self.name = name
         self.kind = kind
         self.range = range
@@ -928,6 +971,7 @@ class SymbolInformation:
     Symbol information items represent single language constructs, and presents some basic information
     about them. SymbolInformation is the workspace level representation of a DocumentSymbol.
     """
+
     def __init__(self, name: str, kind: SymbolKind, loc: Location, detail: str = None):
         self.name = name
         self.kind = kind
@@ -936,12 +980,12 @@ class SymbolInformation:
 
     def to_dict(self):
         retval = {
-            'name': self.name,
-            'kind': self.kind,
-            'location': self.location,
+            "name": self.name,
+            "kind": self.kind,
+            "location": self.location,
         }
         if self.detail:
-            retval['containerName'] = self.detail
+            retval["containerName"] = self.detail
         return retval
 
 
@@ -951,18 +995,19 @@ class MarkupContent:
     MarkupContent is used to present rich text in the UI, such as hover information or
     symbol definitions.
     """
-    PLAINTEXT = 'plaintext'
-    MARKDOWN = 'markdown'
 
-    def __init__(self, value='', kind=None):
+    PLAINTEXT = "plaintext"
+    MARKDOWN = "markdown"
+
+    def __init__(self, value="", kind=None):
         """Create a new markup string"""
         self.value = value
         self.kind = kind if kind else MarkupContent.MARKDOWN
 
     def _sanitize(self, text):
-        text = re.sub(r'[`{}\[\]]', r'\\\0', text)
-        text = re.sub(r'<', '&lt;', text)
-        text = re.sub(r'>', '&gt;', text)
+        text = re.sub(r"[`{}\[\]]", r"\\\0", text)
+        text = re.sub(r"<", "&lt;", text)
+        text = re.sub(r">", "&gt;", text)
         return text
 
     def add_text(self, text):
@@ -981,14 +1026,14 @@ class MarkupContent:
 
     def paragraph(self):
         """Add a new paragraph."""
-        self.value += '\n\n'
+        self.value += "\n\n"
 
     def linebreak(self):
         """Add a linebreak."""
         if self.kind == MarkupContent.MARKDOWN:
-            self.value += '\n\n'
+            self.value += "\n\n"
         else:
-            self.value += '\n'
+            self.value += "\n"
 
     def add_code(self, lang, code):
         """
@@ -1002,11 +1047,11 @@ class MarkupContent:
         code: str
             Raw code.
         """
-        self.add_markdown('\n```{}\n{}\n```\n'.format(lang, code))
+        self.add_markdown("\n```{}\n{}\n```\n".format(lang, code))
 
-    def add_link(self, url, text=''):
+    def add_link(self, url, text=""):
         """Add a clickable link."""
-        self.add_markdown('[{}]({})'.format(text, url))
+        self.add_markdown("[{}]({})".format(text, url))
 
     @staticmethod
     def plaintext(value):
@@ -1030,7 +1075,7 @@ class MarkupContent:
         code: str
             Raw code.
         """
-        return MarkupContent.markdown('```{}\n{}\n```'.format(lang, value))
+        return MarkupContent.markdown("```{}\n{}\n```".format(lang, value))
 
 
 NEXT_TABSTOP = -1
@@ -1041,7 +1086,8 @@ class Snippet:
     Interactive snippet string, used to build boilerplate strings with user interaction.
     See https://code.visualstudio.com/docs/editor/userdefinedsnippets.
     """
-    def __init__(self, value=''):
+
+    def __init__(self, value=""):
         """Create a new snippet with some raw text."""
         self.text = value
         self._next_tabstop = 1
@@ -1062,7 +1108,7 @@ class Snippet:
         if number == NEXT_TABSTOP:
             number = self._next_tabstop
 
-        self.text += ''.join(['${', str(number), '}'])
+        self.text += "".join(["${", str(number), "}"])
         self._next_tabstop = number + 1
 
     def add_placeholder(self, text, number=NEXT_TABSTOP):
@@ -1071,7 +1117,7 @@ class Snippet:
         """
         if number == NEXT_TABSTOP:
             number = self._next_tabstop
-        self.text += ''.join(['${', str(number), ':', text, '}'])
+        self.text += "".join(["${", str(number), ":", text, "}"])
         self._next_tabstop = number + 1
 
     def add_choice(self, choices, number=NEXT_TABSTOP):
@@ -1082,14 +1128,15 @@ class Snippet:
             number = self._next_tabstop
 
         # Don't try to format and insert an empty list
-        choices_text = f'|{",".join(choices)}|' if choices else ''
+        choices_text = f'|{",".join(choices)}|' if choices else ""
 
-        self.text += f'${{{number}{choices_text}}}'
+        self.text += f"${{{number}{choices_text}}}"
         self._next_tabstop = number + 1
 
 
 class FileChangeKind(enum.IntEnum):
     """File change event types, as defined by the LSP specification."""
+
     CREATED = 1
     CHANGED = 2
     DELETED = 3
@@ -1105,6 +1152,7 @@ class LSPServer(RPCServer):
     Implements server lifecycle management, integration with the document store and document
     watchers.
     """
+
     def __init__(self, name: str, version: str, istream, ostream):
         """
         Create a new language server instance. All language server instances will share the same
@@ -1128,7 +1176,7 @@ class LSPServer(RPCServer):
         self.workspaceFolders: List[WorkspaceFolder]
         self.name = name
         self.version = version
-        self.trace = 'off'
+        self.trace = "off"
         self.capability_id = 0
 
     def capabilities(self):
@@ -1141,53 +1189,56 @@ class LSPServer(RPCServer):
 
         Capabilities may also be registered asynchronously, see LSPServer.register_capability.
         """
+
         def has(method):
             return method in self.handlers
 
         caps = {
-            'hoverProvider': has('textDocument/hover'),
-            'declarationProvider': has('textDocument/declaration'),
-            'definitionProvider': has('textDocument/definition'),
-            'typeDefinitionProvider': has('textDocument/typeDefinition'),
-            'implementationProvider': has('textDocument/implementation'),
-            'referencesProvider': has('textDocument/references'),
-            'documentHighlightProvider': has('textDocument/documentHighlight'),
-            'documentSymbolProvider': has('textDocument/documentSymbol'),
-            'codeActionProvider': has('textDocument/codeAction'),
-            'colorProvider': has('textDocument/documentColor'),
-            'documentFormattingProvider': has('textDocument/formatting'),
-            'documentRangeFormattingProvider': has('textDocument/rangeFormatting'),
-            'renameProvider': has('textDocument/rename'),
-            'foldingRangeProvider': has('textDocument/foldingRange'),
-            'selectionRangeProvider': has('textDocument/selectionRange'),
-            'linkedEditingRangeProvider': has('textDocument/linkedEditingRange'),
-            'callHierarchyProvider': has('textDocument/prepareCallHierarchy'),
-            'monikerProvider': has('textDocument/moniker'),
-            'workspaceSymbolProvider': has('workspace/symbol'),
-            'textDocumentSync': 2,  # incremental
+            "hoverProvider": has("textDocument/hover"),
+            "declarationProvider": has("textDocument/declaration"),
+            "definitionProvider": has("textDocument/definition"),
+            "typeDefinitionProvider": has("textDocument/typeDefinition"),
+            "implementationProvider": has("textDocument/implementation"),
+            "referencesProvider": has("textDocument/references"),
+            "documentHighlightProvider": has("textDocument/documentHighlight"),
+            "documentSymbolProvider": has("textDocument/documentSymbol"),
+            "codeActionProvider": has("textDocument/codeAction"),
+            "colorProvider": has("textDocument/documentColor"),
+            "documentFormattingProvider": has("textDocument/formatting"),
+            "documentRangeFormattingProvider": has("textDocument/rangeFormatting"),
+            "renameProvider": has("textDocument/rename"),
+            "foldingRangeProvider": has("textDocument/foldingRange"),
+            "selectionRangeProvider": has("textDocument/selectionRange"),
+            "linkedEditingRangeProvider": has("textDocument/linkedEditingRange"),
+            "callHierarchyProvider": has("textDocument/prepareCallHierarchy"),
+            "monikerProvider": has("textDocument/moniker"),
+            "workspaceSymbolProvider": has("workspace/symbol"),
+            "textDocumentSync": 2,  # incremental
         }
 
-        if has('textDocument/completion'):
-            caps['completionProvider'] = {}
+        if has("textDocument/completion"):
+            caps["completionProvider"] = {}
 
         return caps
 
     def dbg(self, *args: str):
         """Write a debug message to the log file, and report it to the client, if tracing is enabled."""
         super().dbg(*args)
-        if self.trace != 'off':
-            self.notify('$/logTrace', {'message': '\n'.join(args)})
+        if self.trace != "off":
+            self.notify("$/logTrace", {"message": "\n".join(args)})
 
     def log(self, *args):
         """Write an info message to the log file, and report it to the client, if tracing is enabled."""
         super().log(*args)
-        if self.trace == 'message':
-            self.notify('$/logTrace', {'message': '\n'.join(args)})
+        if self.trace == "message":
+            self.notify("$/logTrace", {"message": "\n".join(args)})
 
-    def register_capability(self,
-                            method: str,
-                            options=None,
-                            handler: Optional[Callable[[RPCResponse], Any]] = None):
+    def register_capability(
+        self,
+        method: str,
+        options=None,
+        handler: Optional[Callable[[RPCResponse], Any]] = None,
+    ):
         """
         Asynchronously register a capability to the client.
 
@@ -1205,8 +1256,12 @@ class LSPServer(RPCServer):
             Optional callback for the response message from the client.
         """
         self.capability_id += 1
-        capability = {'id': str(self.capability_id), 'method': method, 'registerOptions': options}
-        self.req('client/registerCapability', {'registrations': [capability]}, handler)
+        capability = {
+            "id": str(self.capability_id),
+            "method": method,
+            "registerOptions": options,
+        }
+        self.req("client/registerCapability", {"registrations": [capability]}, handler)
         return str(self.capability_id)
 
     def watch_files(self, pattern: str, created=True, changed=True, deleted=True):
@@ -1218,10 +1273,12 @@ class LSPServer(RPCServer):
         by extending classes.
         """
         watcher = {
-            'globPattern': pattern,
-            'kind': (created * 1) + (changed * 2) + (deleted * 4),
+            "globPattern": pattern,
+            "kind": (created * 1) + (changed * 2) + (deleted * 4),
         }
-        self.register_capability('workspace/didChangeWatchedFiles', {'watchers': [watcher]})
+        self.register_capability(
+            "workspace/didChangeWatchedFiles", {"watchers": [watcher]}
+        )
 
     def on_file_change(self, uri: Uri, kind: FileChangeKind):
         pass  # Override in extending class
@@ -1229,79 +1286,78 @@ class LSPServer(RPCServer):
     ############################
     # Server lifecycle handlers:
     ############################
-    @handler('$/setTrace')
+    @handler("$/setTrace")
     def handle_set_trace(self, params):
-        self.trace = params['value']
+        self.trace = params["value"]
 
-    @handler('$/cancelRequest')
+    @handler("$/cancelRequest")
     def handle_cancel(self, params):
         pass
 
-    @handler('$/progress')
+    @handler("$/progress")
     def handle_progress(self, params):
         pass
 
-    @handler('shutdown')
+    @handler("shutdown")
     def handle_shutdown(self, params):
         self.running = False
 
-    @handler('initialize')
+    @handler("initialize")
     def handle_initialize(self, params):
-        self.rootUri = params['rootUri']
-        if 'trace' in params:
-            self.trace = params['trace']
-        if params.get('workspaceFolders'):
-            self.dbg('workspaceFolders: ' + str(params['workspaceFolders']))
+        self.rootUri = params["rootUri"]
+        if "trace" in params:
+            self.trace = params["trace"]
+        if params.get("workspaceFolders"):
+            self.dbg("workspaceFolders: " + str(params["workspaceFolders"]))
             self.workspaceFolders = [
-                WorkspaceFolder(Uri.parse(folder['uri']), folder['name'])
-                for folder in params['workspaceFolders']
+                WorkspaceFolder(Uri.parse(folder["uri"]), folder["name"])
+                for folder in params["workspaceFolders"]
             ]
         else:
             self.workspaceFolders = []
         return {
-            'capabilities': self.capabilities(),
-            'serverInfo': {
-                'name': self.name,
-                'version': self.version
-            }
+            "capabilities": self.capabilities(),
+            "serverInfo": {"name": self.name, "version": self.version},
         }
 
     ################################
     # Text document synchronization:
     ################################
-    @handler('textDocument/didOpen')
+    @handler("textDocument/didOpen")
     def handle_open(self, params):
-        doc = params['textDocument']
-        uri = Uri.parse(doc['uri'])
+        doc = params["textDocument"]
+        uri = Uri.parse(doc["uri"])
         if uri:
-            documentStore.open(TextDocument(uri, doc['text'], doc['languageId'], doc['version']))
+            documentStore.open(
+                TextDocument(uri, doc["text"], doc["languageId"], doc["version"])
+            )
         else:
             self.dbg(f'Invalid URI: {doc["uri"]}')
 
-    @handler('textDocument/didChange')
+    @handler("textDocument/didChange")
     def handle_change(self, params):
-        uri = Uri.parse(params['textDocument']['uri'])
+        uri = Uri.parse(params["textDocument"]["uri"])
         doc = documentStore.get(uri)
         if not doc:
             return
 
-        for change in params['contentChanges']:
-            if 'range' in change:
-                range = Range.create(change['range'])
+        for change in params["contentChanges"]:
+            if "range" in change:
+                range = Range.create(change["range"])
             else:
                 range = None
 
-            doc.replace(change['text'], range)
+            doc.replace(change["text"], range)
 
-        doc.version = params['textDocument']['version']
+        doc.version = params["textDocument"]["version"]
 
-    @handler('textDocument/didClose')
+    @handler("textDocument/didClose")
     def handle_close(self, params):
-        documentStore.close(Uri.parse(params['textDocument']['uri']))
+        documentStore.close(Uri.parse(params["textDocument"]["uri"]))
 
-    @handler('workspace/didChangeWatchedFiles')
+    @handler("workspace/didChangeWatchedFiles")
     def handle_changed_watched_files(self, params):
-        for change in params['changes']:
-            uri = Uri.parse(change['uri'])
-            kind = FileChangeKind(change['type'])
+        for change in params["changes"]:
+            uri = Uri.parse(change["uri"])
+            kind = FileChangeKind(change["type"])
             self.on_file_change(uri, kind)

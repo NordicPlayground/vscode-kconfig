@@ -9,25 +9,26 @@ import os
 import json
 import enum
 from datetime import datetime
+
 """
 Remote procedure call implementation.
 
 This file implements a JSON remote procedure call server, for JSON-RPC version 2.0.
 """
 
-JSONRPC = '2.0'
-if os.linesep == '\n':
-    LINE_ENDING = '\r\n'
+JSONRPC = "2.0"
+if os.linesep == "\n":
+    LINE_ENDING = "\r\n"
 else:
     # On Windows, Python will replace any \n characters in stdout with \r\n.
     # Since this can't be easily changed, it's easier to just let it do its thing.
     # See https://stackoverflow.com/questions/49709309/prevent-python-prints-automatic-newline-conversion-to-crlf-on-windows
-    LINE_ENDING = '\n'
+    LINE_ENDING = "\n"
 
 
 def encode_json(o):
     def encoder(obj):
-        if hasattr(obj, 'to_dict'):
+        if hasattr(obj, "to_dict"):
             return obj.to_dict()
         return obj.__dict__
 
@@ -48,14 +49,17 @@ class RPCMsg:
 
     @staticmethod
     def from_obj(obj):
-        if 'id' in obj:
-            if 'method' in obj:
-                return RPCRequest(obj['id'], obj['method'], obj.get('params'))
+        if "id" in obj:
+            if "method" in obj:
+                return RPCRequest(obj["id"], obj["method"], obj.get("params"))
 
-            return RPCResponse(obj['id'], obj.get('result'),
-                               RPCError.create(obj['error']) if obj.get('error') else None)
+            return RPCResponse(
+                obj["id"],
+                obj.get("result"),
+                RPCError.create(obj["error"]) if obj.get("error") else None,
+            )
 
-        return RPCNotification(obj['method'], obj.get('params'))
+        return RPCNotification(obj["method"], obj.get("params"))
 
 
 class RPCRequest(RPCMsg):
@@ -87,6 +91,7 @@ class RPCRequest(RPCMsg):
 
 class RPCErrorCode(enum.IntEnum):
     """Standard error codes for RPC messages"""
+
     PARSE_ERROR = -32700
     INVALID_REQUEST = -32600
     METHOD_NOT_FOUND = -32601
@@ -126,11 +131,13 @@ class RPCError(Exception):
 
     @staticmethod
     def create(obj):
-        return RPCError(obj['code'], obj['message'], obj.get('data'))
+        return RPCError(obj["code"], obj["message"], obj.get("data"))
 
 
 class RPCResponse(RPCMsg):
-    def __init__(self, id: Optional[Union[str, int]] = None, result=None, error: RPCError = None):
+    def __init__(
+        self, id: Optional[Union[str, int]] = None, result=None, error: RPCError = None
+    ):
         """
         RPC Response message.
 
@@ -188,6 +195,7 @@ def handler(method: str):
     method: str
         The method implemented by the handler.
     """
+
     def wrapper(f):
         f._rsp_method = method
         return f
@@ -228,7 +236,7 @@ class RPCServer:
         self._send_stream = ostream if ostream else sys.stdout.buffer
         self._recv_stream = istream if istream else sys.stdin.buffer
         self._req = None
-        self.log_file = 'lsp.log'
+        self.log_file = "lsp.log"
         self.logging = False
         self.running = True
         self.handlers = {}
@@ -236,44 +244,44 @@ class RPCServer:
         self.request_id = 0
         for method_name, _ in inspect.getmembers(self.__class__):
             method = getattr(self.__class__, method_name)
-            if hasattr(method, '_rsp_method'):
+            if hasattr(method, "_rsp_method"):
                 self.handlers[method._rsp_method] = method
 
     def dbg(self, *args):
         """Write a debug message to the log file."""
         if self.logging:
-            with open(self.log_file, 'a') as f:
+            with open(self.log_file, "a") as f:
                 for line in args:
-                    f.write('dbg: ' + str(line) + '\n')
+                    f.write("dbg: " + str(line) + "\n")
 
     def log(self, *args):
         """Write an info message to the log file."""
         if self.logging:
-            sys.stderr.write('\n'.join(*args) + '\n')
-            with open(self.log_file, 'a') as f:
+            sys.stderr.write("\n".join(*args) + "\n")
+            with open(self.log_file, "a") as f:
                 for line in args:
-                    f.write('inf: ' + str(line) + '\n')
+                    f.write("inf: " + str(line) + "\n")
 
     def _read_headers(self):
         """Internal: Read RPC headers from the input stream"""
         length = 0
-        content_type = ''
+        content_type = ""
         while True:
             # Header is encoded in ascii:
             # https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
-            line = self._recv_stream.readline().decode('ascii').strip()
+            line = self._recv_stream.readline().decode("ascii").strip()
             if len(line) == 0:
                 return length, content_type
 
-            parts = [p.strip() for p in line.split(':')]
+            parts = [p.strip() for p in line.split(":")]
             if len(parts) != 2:
                 continue
 
             [key, value] = parts
 
-            if key == 'Content-Length':
+            if key == "Content-Length":
                 length = int(value)
-            elif key == 'Content-Type':
+            elif key == "Content-Type":
                 content_type = value
 
     def rsp(self, result=None, error: RPCError = None):
@@ -298,12 +306,17 @@ class RPCServer:
             Optional
         """
         if not self._req:
-            raise Exception('No command')
+            raise Exception("No command")
 
         self._send(RPCResponse(self._req.id, result, error))
         self._req = None
 
-    def req(self, method: str, params, handler: Optional[Callable[[RPCResponse], Any]] = None):
+    def req(
+        self,
+        method: str,
+        params,
+        handler: Optional[Callable[[RPCResponse], Any]] = None,
+    ):
         """
         Issue a request to the client.
 
@@ -355,12 +368,17 @@ class RPCServer:
     def _send(self, msg: RPCMsg):
         """Internal: Send an RPCMessage to the client"""
         raw = encode_json(msg)
-        self.dbg('send: ' + raw)
+        self.dbg("send: " + raw)
         self._send_stream.write(
-            LINE_ENDING.join([
-                'Content-Type: "application/vscode-jsonrpc; charset=utf-8"',
-                'Content-Length: ' + str(len(raw)), '', raw
-            ]).encode('utf-8'))
+            LINE_ENDING.join(
+                [
+                    'Content-Type: "application/vscode-jsonrpc; charset=utf-8"',
+                    "Content-Length: " + str(len(raw)),
+                    "",
+                    raw,
+                ]
+            ).encode("utf-8")
+        )
         self._send_stream.flush()
 
     def _recv(self) -> Union[RPCNotification, RPCRequest, RPCResponse]:
@@ -368,15 +386,15 @@ class RPCServer:
         length, content_type = self._read_headers()
 
         # Only utf-8 encoding is supported:
-        data = self._recv_stream.read(length).decode('utf-8')
+        data = self._recv_stream.read(length).decode("utf-8")
 
-        self.dbg('recv: {}'.format(data))
+        self.dbg("recv: {}".format(data))
 
         try:
             obj = json.loads(data)
         except json.JSONDecodeError as e:
             raise Exception(
-                f'FATAL: Failed to decode command.\n\tContent-Length: {length}\n\tContent type: {content_type}\n\tData: {data}'
+                f"FATAL: Failed to decode command.\n\tContent-Length: {length}\n\tContent type: {content_type}\n\tData: {data}"
             )
 
         return RPCMsg.from_obj(obj)
@@ -400,7 +418,7 @@ class RPCServer:
         if isinstance(msg, RPCRequest):
             self._req = msg
 
-        self.dbg('{} Method: {}'.format(type(msg).__name__, msg.method))
+        self.dbg("{} Method: {}".format(type(msg).__name__, msg.method))
 
         if msg.method in self.handlers:
             error = None
@@ -409,14 +427,16 @@ class RPCServer:
             try:
                 result = self.handlers[msg.method](self, msg.params)
             except RPCError as e:
-                self.dbg('Failed with error ' + str(e))
+                self.dbg("Failed with error " + str(e))
                 error = e
             except Exception as e:
-                self.dbg('Failed with error ' + str(e))
-                error = RPCError(RPCErrorCode.UNKNOWN_ERROR_CODE, 'Exception: "{}"'.format(e.args))
+                self.dbg("Failed with error " + str(e))
+                error = RPCError(
+                    RPCErrorCode.UNKNOWN_ERROR_CODE, 'Exception: "{}"'.format(e.args)
+                )
 
             end = datetime.now()
-            self.dbg('Handled in {} us'.format((end - start).microseconds))
+            self.dbg("Handled in {} us".format((end - start).microseconds))
 
             if self._req:
                 self.rsp(result, error)
@@ -425,8 +445,11 @@ class RPCServer:
             if self._req:
                 self.rsp(
                     None,
-                    RPCError(RPCErrorCode.METHOD_NOT_FOUND,
-                             'Unknown method "{}"'.format(msg.method)))
+                    RPCError(
+                        RPCErrorCode.METHOD_NOT_FOUND,
+                        'Unknown method "{}"'.format(msg.method),
+                    ),
+                )
 
     def loop(self):
         """
@@ -436,8 +459,8 @@ class RPCServer:
         """
         if self.logging:
             # Put a clear session separator in log file:
-            with open(self.log_file, 'a') as f:
-                f.write('=' * 80 + '\n')
+            with open(self.log_file, "a") as f:
+                f.write("=" * 80 + "\n")
 
         try:
             while self.running:
